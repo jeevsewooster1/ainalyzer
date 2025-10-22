@@ -6,7 +6,7 @@ An open-source AI-powered Burp Suite extension that integrates an AI assistant f
 
 AInalyzer augments penetration testing workflows by leveraging Large Language Models (LLMs) to automatically generate and execute security test cases against web endpoints. The extension identifies potential attack vectors, performs automated testing iterations, and adjusts its approach based on server responses—all while keeping the security professional in control of each step.
 
-![AInalyzer Interface](images/image_aianalyzer.png)
+![AInalyzer Interface](images/image_ainalyzer.png)
 
 ## Features
 
@@ -19,10 +19,6 @@ AInalyzer augments penetration testing workflows by leveraging Large Language Mo
   - **Execution Panel**: Real-time AI reasoning, HTTP requests, and responses
 - 🔌 **OpenAI-Compatible API**: Works with local LLMs (Ollama, LM Studio) and cloud providers
 - 🎯 **Context-Aware**: Maintains conversation history across testing steps for intelligent follow-ups
-
-## Screenshots
-
-![AInalyzer Interface](screenshot.png)
 
 ## How It Works
 
