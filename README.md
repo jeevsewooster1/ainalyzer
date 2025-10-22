@@ -1,6 +1,3 @@
-Here's an improved and properly structured README.md for your AInalyzer extension:
-
-```markdown
 # AInalyzer
 
 An open-source AI-powered Burp Suite extension that integrates an AI assistant for performing iterative security investigations on HTTP endpoints with human-in-the-loop oversight.
@@ -87,7 +84,6 @@ cd ainalyzer
 
 ## Usage Example
 
-```
 1. Intercept a POST request to /api/cart in Burp Proxy
 2. Right-click → "Send to AInalyzer"
 3. AI generates tasks:
@@ -100,5 +96,3 @@ cd ainalyzer
 6. Review response → Click "Next" - AI tries removing authentication
 7. Review response → Click "Next" - AI attempts privilege escalation
 8. Continue until vulnerability confirmed or test exhausted
-```
-
