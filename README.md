@@ -43,7 +43,7 @@ AInalyzer augments penetration testing workflows by leveraging Large Language Mo
 
 ```
 # Clone the repository
-git clone https://github.com/jevsewooster1/ainalyzer/ainalyzer.git
+git clone https://github.com/jeevsewooster1/ainalyzer/ainalyzer.git
 cd ainalyzer
 
 # Build with Gradle
