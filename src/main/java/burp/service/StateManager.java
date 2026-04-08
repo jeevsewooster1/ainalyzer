@@ -9,6 +9,7 @@ import burp.model.*;
 import burp.ui.*;
 
 import javax.swing.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -38,6 +39,8 @@ public class StateManager {
 
   public void initializeNewEndpoint(HttpRequestResponse requestResponse) {
     state.setBaseRequestResponse(requestResponse);
+    state.setCurrentTask(null);
+    state.setCurrentStep(null);
     state.setCurrentState(ExecutionState.State.GENERATING_TASKS);
 
     executionPanel.clear();
@@ -67,31 +70,19 @@ public class StateManager {
 
   public void selectTask(Task task) {
     state.setCurrentTask(task);
-    executionPanel.clear(); // Clear details panel
+    state.setCurrentStep(null);
+    executionPanel.clear();
 
-    // --- START FIX ---
-
-    // 1. Get the steps that are already saved in the task
-    // (This assumes your Task model has a getSteps() method, which it should!)
     List<Step> existingSteps = task.getSteps();
-
-    // 2. Tell the StepsPanel to display this list
-    // (You will need to create this 'setSteps' method in StepsPanel)
     stepsPanel.setSteps(existingSteps);
 
-    // 3. (Optional but nice) Automatically select the last step and show its
-    // details
     if (existingSteps != null && !existingSteps.isEmpty()) {
       Step lastStep = existingSteps.get(existingSteps.size() - 1);
-
-      // You'll need to add a 'selectStep' method to your StepsPanel
+      state.setCurrentStep(lastStep);
       stepsPanel.selectStep(lastStep);
-
-      // This method already exists and will show the request/response
       displayStepDetails(lastStep);
       executionPanel.setThoughtProcess("Resumed task: " + task.getName() + ". Showing last step.");
     } else {
-      // This is the original behavior for a new, empty task
       executionPanel.setThoughtProcess("Task selected: " + task.getName() + ". Click 'Next' to begin.");
     }
 
@@ -100,9 +91,12 @@ public class StateManager {
 
   public void displayStepDetails(Step step) {
     if (step == null) {
+      state.setCurrentStep(null);
       executionPanel.clear();
       return;
     }
+
+    state.setCurrentStep(step);
 
     String thought = step.getThoughtProcess() != null ? step.getThoughtProcess() : "";
     String summary = step.getSummary() != null ? step.getSummary() : "No summary available.";
@@ -124,7 +118,7 @@ public class StateManager {
 
     CompletableFuture.runAsync(() -> {
       try {
-        List<Step> previousSteps = stepsPanel.getSteps();
+        List<Step> previousSteps = new ArrayList<>(state.getCurrentTask().getSteps());
 
         Step newStep = aiService.generateStep(
             state.getBaseRequestResponse(),
@@ -134,8 +128,8 @@ public class StateManager {
         state.setCurrentStep(newStep);
 
         SwingUtilities.invokeLater(() -> {
-          stepsPanel.addStep(newStep);
           state.getCurrentTask().addStep(newStep);
+          stepsPanel.addStep(newStep);
         });
 
         HttpService httpService = state.getBaseRequestResponse().httpService();

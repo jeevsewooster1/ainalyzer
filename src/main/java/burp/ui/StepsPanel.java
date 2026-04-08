@@ -6,7 +6,6 @@ import burp.service.StateManager;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
 
 public class StepsPanel extends JPanel {
@@ -16,12 +15,10 @@ public class StepsPanel extends JPanel {
   private DefaultListModel<Step> stepListModel;
   private JList<Step> stepList;
   private JButton nextButton;
-  private List<Step> steps;
 
   public StepsPanel(MontoyaApi api, StateManager stateManager) {
     this.api = api;
     this.stateManager = stateManager;
-    this.steps = new ArrayList<>();
 
     setLayout(new BorderLayout());
 
@@ -51,8 +48,6 @@ public class StepsPanel extends JPanel {
   }
 
   public void addStep(Step step) {
-    steps.add(step);
-
     stepListModel.addElement(step);
 
     int newIndex = stepListModel.getSize() - 1;
@@ -63,16 +58,11 @@ public class StepsPanel extends JPanel {
   }
 
   public void clearSteps() {
-    steps.clear();
     stepListModel.clear();
   }
 
   public void setNextButtonEnabled(boolean enabled) {
     nextButton.setEnabled(enabled);
-  }
-
-  public List<Step> getSteps() {
-    return new ArrayList<>(steps);
   }
 
   public void setSteps(List<Step> steps) {
