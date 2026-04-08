@@ -1,6 +1,7 @@
 package burp.model;
 
 // Add these imports
+import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import com.google.gson.JsonObject;
@@ -9,6 +10,7 @@ public class Step {
   private String name;
   private String thoughtProcess;
   private String modelReasoningProcess;
+  private String rawRequest;
   private String requestParseError;
 
   private HttpRequest request;
@@ -72,11 +74,17 @@ public class Step {
     return requestParseError;
   }
 
+  public String getRawRequest() {
+    return rawRequest;
+  }
+
   public JsonObject toStepGenerationJson() {
     JsonObject stepJson = new JsonObject();
     stepJson.addProperty("name", this.name);
     stepJson.addProperty("thought_process", this.thoughtProcess);
-    if (this.request != null) {
+    if (this.rawRequest != null) {
+      stepJson.addProperty("request", this.rawRequest);
+    } else if (this.request != null) {
       stepJson.addProperty("request", this.request.toString());
     } else {
       stepJson.addProperty("request", "No request was generated for this step.");
@@ -85,13 +93,35 @@ public class Step {
   }
 
   public boolean setRequest(String request) {
+    this.rawRequest = request;
     this.requestParseError = null;
+    this.request = null;
+
+    if (request == null || request.isBlank()) {
+      this.requestParseError = "Request text is empty.";
+      return false;
+    }
+
+    return true;
+  }
+
+  public boolean parseRequest(HttpService httpService) {
+    this.requestParseError = null;
+    this.request = null;
+
+    if (rawRequest == null || rawRequest.isBlank()) {
+      this.requestParseError = "Request text is empty.";
+      return false;
+    }
+    if (httpService == null) {
+      this.requestParseError = "HTTP service is not set.";
+      return false;
+    }
 
     try {
-      this.request = HttpRequest.httpRequest(request);
+      this.request = HttpRequest.httpRequest(httpService, rawRequest);
       return true;
     } catch (Exception e) {
-      this.request = null;
       this.requestParseError = e.getMessage();
       return false;
     }

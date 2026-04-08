@@ -10,8 +10,10 @@ repositories {
 dependencies {
     compileOnly("net.portswigger.burp.extensions:montoya-api:2025.10")
     implementation("com.google.code.gson:gson:2.10.1")
+    testImplementation("net.portswigger.burp.extensions:montoya-api:2025.10")
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile> {

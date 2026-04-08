@@ -133,9 +133,7 @@ public class StateManager {
         });
 
         HttpService httpService = state.getBaseRequestResponse().httpService();
-        HttpRequest aiRequest = newStep.getRequest();
-
-        if (aiRequest == null) {
+        if (!newStep.parseRequest(httpService)) {
           String requestParseError = newStep.getRequestParseError();
           String errorSummary = "Error: AI failed to generate a valid HTTP request for this step."
               + (requestParseError != null && !requestParseError.isBlank()
@@ -146,16 +144,13 @@ public class StateManager {
           SwingUtilities.invokeLater(() -> {
             executionPanel.setThoughtProcess(newStep.getThoughtProcess() +
                 "\n\nSummary: " + errorSummary);
-            executionPanel.setRequest(null); // No request to show
-            executionPanel.setResponse(null); // No response
+            executionPanel.setRequest(null);
+            executionPanel.setResponse(null);
             stepsPanel.setNextButtonEnabled(true);
             state.setCurrentState(ExecutionState.State.IDLE);
           });
           return;
         }
-
-        HttpRequest connectedRequest = aiRequest.withService(httpService);
-        newStep.setRequest(connectedRequest);
 
         SwingUtilities.invokeLater(() -> {
           executionPanel.setThoughtProcess(newStep.getThoughtProcess());
