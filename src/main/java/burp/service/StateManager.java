@@ -136,7 +136,11 @@ public class StateManager {
         HttpRequest aiRequest = newStep.getRequest();
 
         if (aiRequest == null) {
-          String errorSummary = "Error: AI failed to generate a valid HTTP request for this step.";
+          String requestParseError = newStep.getRequestParseError();
+          String errorSummary = "Error: AI failed to generate a valid HTTP request for this step."
+              + (requestParseError != null && !requestParseError.isBlank()
+                  ? " Parser error: " + requestParseError
+                  : "");
           newStep.setSummary(errorSummary);
 
           SwingUtilities.invokeLater(() -> {

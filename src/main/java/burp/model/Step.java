@@ -9,6 +9,7 @@ public class Step {
   private String name;
   private String thoughtProcess;
   private String modelReasoningProcess;
+  private String requestParseError;
 
   private HttpRequest request;
   private HttpResponse response;
@@ -67,6 +68,10 @@ public class Step {
     this.modelReasoningProcess = modelReasoningProcess;
   }
 
+  public String getRequestParseError() {
+    return requestParseError;
+  }
+
   public JsonObject toStepGenerationJson() {
     JsonObject stepJson = new JsonObject();
     stepJson.addProperty("name", this.name);
@@ -79,11 +84,16 @@ public class Step {
     return stepJson;
   }
 
-  public void setRequest(String request) {
+  public boolean setRequest(String request) {
+    this.requestParseError = null;
+
     try {
       this.request = HttpRequest.httpRequest(request);
+      return true;
     } catch (Exception e) {
-      this.request = HttpRequest.httpRequest("GET /ai-parse-error HTTP/1.1\r\nHost: error.com\r\n\r\n" + request);
+      this.request = null;
+      this.requestParseError = e.getMessage();
+      return false;
     }
   }
 }

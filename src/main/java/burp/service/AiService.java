@@ -305,14 +305,16 @@ public class AiService {
       JsonObject stepObj = gson.fromJson(aiJsonResponse, JsonObject.class);
       Step step = new Step(stepObj.get("name").getAsString());
       step.setThoughtProcess(stepObj.get("thought_process").getAsString());
-      step.setRequest(stepObj.get("request").getAsString());
+      String requestText = stepObj.get("request").getAsString();
+      if (!step.setRequest(requestText)) {
+        throw new IllegalArgumentException("AI returned an invalid HTTP request: " + step.getRequestParseError());
+      }
       return step;
     } catch (Exception e) {
       api.logging().logToError("Error parsing step JSON: " + e.getMessage());
       api.logging().logToError("Faulty JSON: " + aiJsonResponse);
       Step fallback = new Step("Error: Failed to parse AI response");
-      fallback.setThoughtProcess("Check the extension error log for details.");
-      fallback.setRequest("GET /error HTTP/1.1\r\nHost: parse.error\r\n\r\n");
+      fallback.setThoughtProcess("The AI response could not be parsed into a valid HTTP request. Check the extension error log for details.");
       return fallback;
     }
   }
