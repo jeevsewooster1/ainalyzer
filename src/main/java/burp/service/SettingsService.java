@@ -4,7 +4,9 @@ import burp.api.montoya.MontoyaApi;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class SettingsService {
@@ -38,7 +40,7 @@ public class SettingsService {
   private static final String DEFAULT_LOCAL_API_ENDPOINT = "http://localhost:11434/v1/chat/completions";
   private static final String DEFAULT_OPENAI_API_ENDPOINT = "https://api.openai.com/v1/chat/completions";
   private static final String DEFAULT_LOCAL_MODEL_NAME = "llama3.1";
-  private static final String DEFAULT_OPENAI_MODEL_NAME = "gpt-4.1-mini";
+  private static final String DEFAULT_OPENAI_MODEL_NAME = "gpt-5.2";
 
   private final MontoyaApi api;
 
@@ -152,6 +154,22 @@ public class SettingsService {
 
   public String defaultModelName(ProviderType providerType) {
     return providerType == ProviderType.OPENAI ? DEFAULT_OPENAI_MODEL_NAME : DEFAULT_LOCAL_MODEL_NAME;
+  }
+
+  public List<String> suggestedModels(ProviderType providerType) {
+    if (providerType == ProviderType.OPENAI) {
+      return Arrays.asList(
+          "gpt-5.2",
+          "gpt-5.2-chat-latest",
+          "gpt-5-mini",
+          "gpt-4.1");
+    }
+
+    return Arrays.asList(
+        "llama3.1",
+        "qwen2.5",
+        "mistral-small",
+        "deepseek-r1");
   }
 
   private ProviderType parseProviderType(String persistedValue) {

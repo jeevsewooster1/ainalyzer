@@ -181,7 +181,9 @@ public class AiService {
     responseFormat.add("json_schema", schema);
     requestBody.add("response_format", responseFormat);
 
-    requestBody.addProperty("temperature", 0.1);
+    if (settingsService.getProviderType() == SettingsService.ProviderType.LOCAL_OPENAI_COMPATIBLE) {
+      requestBody.addProperty("temperature", 0.1);
+    }
 
     try (OutputStream os = conn.getOutputStream()) {
       byte[] input = gson.toJson(requestBody).getBytes(StandardCharsets.UTF_8);
@@ -233,44 +235,22 @@ public class AiService {
           "name": "task_list",
           "strict": true,
           "schema": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" }
-              },
-              "required": ["name", "description"],
-              "additionalProperties": false
-            }
-          }
-        }
-        """;
-    return gson.fromJson(schema, JsonObject.class);
-  }
-
-  private JsonObject createStepSchema() {
-    String schema = """
-        {
-          "name": "test_step",
-          "strict": true,
-          "schema": {
             "type": "object",
             "properties": {
-              "name": {
-                "type": "string",
-                "description": "Short, human-readable explanation of this test's purpose. e.g., 'Test Incremental IDOR on /api/users'. MUST NOT be a URL or API path by itself."
-              },
-              "thought_process": {
-                "type": "string",
-                "description": "Your step-by-step reasoning for building this specific request, based on the history and task."
-              },
-              "request": {
-                "type": "string",
-                "description": "The complete, raw HTTP request string. CRITICAL: All line breaks MUST be the literal string '\\r\\n' (CRLF). Example: 'GET / HTTP/1.1\\r\\nHost: example.com\\r\\n\\r\\n'"
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" }
+                  },
+                  "required": ["name", "description"],
+                  "additionalProperties": false
+                }
               }
             },
-            "required": ["name", "thought_process", "request"],
+            "required": ["tasks"],
             "additionalProperties": false
           }
         }
@@ -278,35 +258,32 @@ public class AiService {
     return gson.fromJson(schema, JsonObject.class);
   }
 
-  private JsonObject createSummarySchema() {
-    String schema = """
-        {
-          "name": "analysis_summary",
-          "strict": true,
-          "schema": {
-            "type": "object",
-            "properties": {
-              "summary": { "type": "string", "description": "Concise analysis of the test result (2-3 sentences)." }
-            },
-            "required": ["summary"],
-            "additionalProperties": false
-          }
-        }
-        """;
-    return gson.fromJson(schema, JsonObject.class);
+  private List<Task> parseTaskArray(JsonArray taskArray) {
+    List<Task> tasks = new ArrayList<>();
+    for (JsonElement element : taskArray) {
+      JsonObject taskObj = element.getAsJsonObject();
+      String name = taskObj.get("name").getAsString();
+      String description = taskObj.get("description").getAsString();
+      tasks.add(new Task(name, description));
+    }
+    return tasks;
   }
 
   private List<Task> parseTasks(String aiJsonResponse) {
     try {
-      JsonArray taskArray = gson.fromJson(aiJsonResponse, JsonArray.class);
-      List<Task> tasks = new ArrayList<>();
-      for (JsonElement element : taskArray) {
-        JsonObject taskObj = element.getAsJsonObject();
-        String name = taskObj.get("name").getAsString();
-        String description = taskObj.get("description").getAsString();
-        tasks.add(new Task(name, description));
+      JsonElement root = gson.fromJson(aiJsonResponse, JsonElement.class);
+
+      if (root.isJsonArray()) {
+        return parseTaskArray(root.getAsJsonArray());
       }
-      return tasks;
+
+      JsonObject responseObj = root.getAsJsonObject();
+      JsonArray taskArray = responseObj.getAsJsonArray("tasks");
+      if (taskArray == null) {
+        throw new IllegalArgumentException("Missing 'tasks' array in AI response.");
+      }
+
+      return parseTaskArray(taskArray);
     } catch (Exception e) {
       api.logging().logToError("Error parsing tasks JSON: " + e.getMessage());
       api.logging().logToError("Faulty JSON: " + aiJsonResponse);
@@ -383,6 +360,54 @@ public class AiService {
 
     return combinedText.toString();
   }
+
+  private JsonObject createStepSchema() {
+    String schema = """
+        {
+          "name": "test_step",
+          "strict": true,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Short, human-readable explanation of this test's purpose. e.g., 'Test Incremental IDOR on /api/users'. MUST NOT be a URL or API path by itself."
+              },
+              "thought_process": {
+                "type": "string",
+                "description": "Your step-by-step reasoning for building this specific request, based on the history and task."
+              },
+              "request": {
+                "type": "string",
+                "description": "The complete, raw HTTP request string. CRITICAL: All line breaks MUST be the literal string '\\r\\n' (CRLF). Example: 'GET / HTTP/1.1\\r\\nHost: example.com\\r\\n\\r\\n'"
+              }
+            },
+            "required": ["name", "thought_process", "request"],
+            "additionalProperties": false
+          }
+        }
+        """;
+    return gson.fromJson(schema, JsonObject.class);
+  }
+
+  private JsonObject createSummarySchema() {
+    String schema = """
+        {
+          "name": "analysis_summary",
+          "strict": true,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "summary": { "type": "string", "description": "Concise analysis of the test result (2-3 sentences)." }
+            },
+            "required": ["summary"],
+            "additionalProperties": false
+          }
+        }
+        """;
+    return gson.fromJson(schema, JsonObject.class);
+  }
+
 
   private JsonObject createMessage(String role, String content) {
     JsonObject message = new JsonObject();

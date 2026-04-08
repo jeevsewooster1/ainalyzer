@@ -30,7 +30,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   private final ExecutionPanel executionPanel;
 
   private JTextField apiEndpointField;
-  private JTextField modelField;
+  private JComboBox<String> modelField;
   private JPasswordField apiKeyField;
   private JTextArea extraHeadersArea;
   private JComboBox<SettingsService.ProviderType> providerTypeComboBox;
@@ -86,7 +86,8 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     apiEndpointField = new JTextField(settingsService.getApiEndpoint(), 30);
 
     JLabel modelLabel = new JLabel("Model:");
-    modelField = new JTextField(settingsService.getModelName(), 15);
+    modelField = new JComboBox<>();
+    modelField.setEditable(true);
 
     JLabel providerLabel = new JLabel("Provider:");
     providerTypeComboBox = new JComboBox<>(SettingsService.ProviderType.values());
@@ -112,7 +113,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     saveButton.addActionListener(e -> {
       SettingsService.ProviderType providerType = (SettingsService.ProviderType) providerTypeComboBox.getSelectedItem();
       String newEndpoint = apiEndpointField.getText().trim();
-      String newModel = modelField.getText().trim();
+      String newModel = selectedModel().trim();
       String newApiKey = new String(apiKeyField.getPassword()).trim();
       String newExtraHeaders = extraHeadersArea.getText().trim();
 
@@ -203,16 +204,32 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
 
     if (applyDefaults) {
       apiEndpointField.setText(settingsService.defaultApiEndpoint(providerType));
-      modelField.setText(settingsService.defaultModelName(providerType));
+      populateModelSuggestions(providerType, settingsService.defaultModelName(providerType));
       if (providerType == SettingsService.ProviderType.LOCAL_OPENAI_COMPATIBLE) {
         apiKeyField.setText("");
       }
+    } else {
+      populateModelSuggestions(providerType, settingsService.getModelName());
     }
 
     boolean openAi = providerType == SettingsService.ProviderType.OPENAI;
     providerHelpLabel.setText(openAi
-        ? "OpenAI uses bearer-token auth and the official chat completions endpoint."
+        ? "OpenAI uses bearer-token auth. Suggested models include gpt-5.2, gpt-5.2-chat-latest, and gpt-5-mini."
         : "Use this for Ollama, LM Studio, and other OpenAI-compatible local endpoints.");
+  }
+
+  private void populateModelSuggestions(SettingsService.ProviderType providerType, String selectedModel) {
+    DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+    for (String option : settingsService.suggestedModels(providerType)) {
+      model.addElement(option);
+    }
+    modelField.setModel(model);
+    modelField.setSelectedItem(selectedModel);
+  }
+
+  private String selectedModel() {
+    Object selectedItem = modelField.getEditor().getItem();
+    return selectedItem != null ? selectedItem.toString() : "";
   }
 
   private JPanel createPanelWithTitle(String title, JComponent content) {
