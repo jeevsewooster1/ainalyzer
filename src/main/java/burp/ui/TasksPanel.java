@@ -58,6 +58,10 @@ public class TasksPanel extends JPanel {
     return taskList.getSelectedValue();
   }
 
+  public void selectTask(Task task) {
+    taskList.setSelectedValue(task, true);
+  }
+
   private static class TaskCellRenderer extends JPanel implements ListCellRenderer<Task> {
 
     private JLabel nameLabel;

@@ -5,6 +5,7 @@ import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 // REMOVED: import burp.api.montoya.ui.SuiteTab;
+import burp.model.RequestThread;
 import burp.service.AiService;
 import burp.service.SettingsService; // Import the SettingsService
 import burp.service.StateManager;
@@ -12,6 +13,7 @@ import burp.service.StateManagerView;
 import burp.service.RequestExecutor;
 import burp.model.Step;
 import burp.model.Task;
+import burp.model.ThreadMessage;
 
 import javax.swing.*;
 import java.awt.*;
@@ -25,6 +27,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   private final SettingsService settingsService;
   private final RequestExecutor requestExecutor;
 
+  private final RequestThreadsPanel requestThreadsPanel;
   private final TasksPanel tasksPanel;
   private final StepsPanel stepsPanel;
   private final ExecutionPanel executionPanel;
@@ -46,36 +49,75 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
 
     setLayout(new BorderLayout());
 
+    requestThreadsPanel = new RequestThreadsPanel(api, stateManager);
     tasksPanel = new TasksPanel(api, stateManager);
     stepsPanel = new StepsPanel(api, stateManager);
-    executionPanel = new ExecutionPanel(api, stateManager);
+    executionPanel = new ExecutionPanel(api);
+    executionPanel.setConversationSendListener(stateManager::sendCurrentThreadMessage);
 
     stateManager.setView(this);
 
+    JPanel configTitledPanel = createPanelWithTitle("Configuration", createConfigPanel());
+    JPanel requestsTitledPanel = createPanelWithTitle("Requests", requestThreadsPanel);
     JPanel tasksTitledPanel = createPanelWithTitle("Tasks", tasksPanel);
     JPanel stepsTitledPanel = createPanelWithTitle("Steps", stepsPanel);
 
-    JSplitPane rightSplitPane = new JSplitPane(
+    configTitledPanel.setMinimumSize(new Dimension(260, 170));
+    requestsTitledPanel.setMinimumSize(new Dimension(260, 180));
+    tasksTitledPanel.setMinimumSize(new Dimension(260, 180));
+    configTitledPanel.setPreferredSize(new Dimension(320, 200));
+    requestsTitledPanel.setPreferredSize(new Dimension(320, 220));
+    tasksTitledPanel.setPreferredSize(new Dimension(320, 260));
+
+    JSplitPane leftBottomSplitPane = new JSplitPane(
+        JSplitPane.VERTICAL_SPLIT,
+        requestsTitledPanel,
+        tasksTitledPanel);
+    leftBottomSplitPane.setResizeWeight(0.45);
+    leftBottomSplitPane.setDividerSize(8);
+    leftBottomSplitPane.setOneTouchExpandable(true);
+    leftBottomSplitPane.setBorder(null);
+
+    JSplitPane leftSplitPane = new JSplitPane(
+        JSplitPane.VERTICAL_SPLIT,
+        configTitledPanel,
+        leftBottomSplitPane);
+    leftSplitPane.setResizeWeight(0.28);
+    leftSplitPane.setDividerSize(8);
+    leftSplitPane.setOneTouchExpandable(true);
+    leftSplitPane.setBorder(null);
+
+    JSplitPane bottomRightSplitPane = new JSplitPane(
         JSplitPane.HORIZONTAL_SPLIT,
         stepsTitledPanel,
         executionPanel);
-    rightSplitPane.setResizeWeight(0.5);
-    rightSplitPane.setBorder(null);
+    bottomRightSplitPane.setResizeWeight(0.26);
+    bottomRightSplitPane.setDividerSize(8);
+    bottomRightSplitPane.setOneTouchExpandable(true);
+    bottomRightSplitPane.setBorder(null);
 
     JSplitPane mainSplitPane = new JSplitPane(
         JSplitPane.HORIZONTAL_SPLIT,
-        tasksTitledPanel,
-        rightSplitPane);
-    mainSplitPane.setResizeWeight(0.33);
+        leftSplitPane,
+        bottomRightSplitPane);
+    mainSplitPane.setResizeWeight(0.22);
+    mainSplitPane.setDividerSize(8);
+    mainSplitPane.setOneTouchExpandable(true);
     mainSplitPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    mainSplitPane.setMinimumSize(new Dimension(900, 600));
 
     add(mainSplitPane, BorderLayout.CENTER);
-    add(createConfigPanel(), BorderLayout.NORTH);
+
+    SwingUtilities.invokeLater(() -> {
+      mainSplitPane.setDividerLocation(300);
+      leftSplitPane.setDividerLocation(185);
+      leftBottomSplitPane.setDividerLocation(230);
+      bottomRightSplitPane.setDividerLocation(250);
+    });
   }
 
-  private JPanel createConfigPanel() {
+  private JComponent createConfigPanel() {
     JPanel configPanel = new JPanel(new GridBagLayout());
-    configPanel.setBorder(BorderFactory.createTitledBorder("Configuration"));
 
     GridBagConstraints gbc = new GridBagConstraints();
     gbc.insets = new Insets(4, 4, 4, 4);
@@ -244,8 +286,23 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   }
 
   @Override
+  public void setRequestThreads(List<RequestThread> requestThreads) {
+    requestThreadsPanel.setRequestThreads(requestThreads);
+  }
+
+  @Override
+  public void selectRequestThread(RequestThread requestThread) {
+    requestThreadsPanel.selectRequestThread(requestThread);
+  }
+
+  @Override
   public void setTasks(List<Task> tasks) {
     tasksPanel.setTasks(tasks);
+  }
+
+  @Override
+  public void selectTask(Task task) {
+    tasksPanel.selectTask(task);
   }
 
   @Override
@@ -291,6 +348,16 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   @Override
   public void clearExecution() {
     executionPanel.clear();
+  }
+
+  @Override
+  public void setConversation(List<ThreadMessage> conversation) {
+    executionPanel.setConversation(conversation);
+  }
+
+  @Override
+  public void setConversationEnabled(boolean enabled) {
+    executionPanel.setConversationEnabled(enabled);
   }
 
 }

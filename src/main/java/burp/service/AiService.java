@@ -4,6 +4,7 @@ import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import burp.model.ThreadMessage;
 import burp.model.Step;
 import burp.model.Task;
 import com.google.gson.*;
@@ -36,6 +37,11 @@ public class AiService {
       You will be given a base request, a specific task, and the history of previous steps for that task.
       Determine the next logical single test to execute without repeating prior steps.
       Return only JSON matching the provided schema.
+      Precedence rules for the next step:
+      1. If the latest user chat message gives a concrete next-step instruction or payload idea, follow it for the next step.
+      2. Use the task and prior steps as supporting context, not as a reason to ignore that latest user instruction.
+      3. Only refuse the latest user instruction if it would make the output invalid, impossible to execute against the request context, or non-HTTP.
+      Do not ignore a concrete latest user instruction just because a different step would also be reasonable for the current task.
 
       Field requirements:
       1. name: a short human-readable title for this test. It must not be just a URL, endpoint path, or code snippet.
@@ -87,10 +93,12 @@ public class AiService {
     return parseTasks(aiResponse);
   }
 
-  public Step generateStep(HttpRequestResponse baseReqResp, Task task, List<Step> previousSteps) throws Exception {
+  public Step generateStep(HttpRequestResponse baseReqResp, Task task, List<Step> previousSteps, List<ThreadMessage> conversation)
+      throws Exception {
 
     List<JsonObject> messages = new ArrayList<>();
-    messages.add(createMessage("system", STEP_GENERATION_PROMPT));
+    String latestUserInstruction = latestUserInstruction(conversation);
+    messages.add(createMessage("system", withConversationContext(STEP_GENERATION_PROMPT, conversation)));
 
     messages.add(createMessage("user",
         "Start of test.\n" +
@@ -119,6 +127,14 @@ public class AiService {
         task.getName(),
         task.getDescription());
     messages.add(createMessage("user", finalPrompt));
+
+    if (latestUserInstruction != null) {
+      messages.add(createMessage("user",
+          "Override for the very next step: follow this latest user instruction directly.\n\n" +
+              latestUserInstruction + "\n\n" +
+              "If this is a payload or mutation idea, produce the next HTTP request using it. " +
+              "Do not answer with 'no further test needed' unless the instruction is impossible to apply to the request."));
+    }
 
     String aiResponse = callAi(messages, this.stepGenerationSchema);
     return parseStep(aiResponse);
@@ -227,6 +243,57 @@ public class AiService {
     for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
       conn.setRequestProperty(entry.getKey(), entry.getValue());
     }
+  }
+
+  private String withConversationContext(String basePrompt, List<ThreadMessage> conversation) {
+    if (conversation == null || conversation.isEmpty()) {
+      return basePrompt;
+    }
+
+    String latestUserInstruction = null;
+    StringBuilder relevantMessages = new StringBuilder();
+    int userMessageCount = 0;
+    for (int i = conversation.size() - 1; i >= 0 && userMessageCount < 6; i--) {
+      ThreadMessage message = conversation.get(i);
+      if (message.getRole() == ThreadMessage.Role.USER) {
+        if (latestUserInstruction == null) {
+          latestUserInstruction = message.getContent();
+        }
+        relevantMessages.insert(0, "- " + message.getContent() + "\n");
+        userMessageCount++;
+      }
+    }
+
+    if (relevantMessages.length() == 0) {
+      return basePrompt;
+    }
+
+    return basePrompt + "\n\n" +
+        "AUTHORITATIVE LATEST USER INSTRUCTION FOR THE NEXT STEP:\n" +
+        latestUserInstruction + "\n\n" +
+        "You must follow this latest user instruction for the very next step unless doing so would make the output invalid or impossible.\n\n" +
+        "MANDATORY USER CHAT INSTRUCTIONS FOR THE NEXT STEP:\n" +
+        relevantMessages +
+        "\nYou must incorporate these user instructions into your next-step selection and reasoning. " +
+        "If you choose a step that does not reflect the latest relevant user instructions, your answer is incorrect.";
+  }
+
+  private String latestUserInstruction(List<ThreadMessage> conversation) {
+    if (conversation == null) {
+      return null;
+    }
+
+    for (int i = conversation.size() - 1; i >= 0; i--) {
+      ThreadMessage message = conversation.get(i);
+      if (message.getRole() == ThreadMessage.Role.USER) {
+        String content = message.getContent();
+        if (content != null && !content.isBlank()) {
+          return content.trim();
+        }
+      }
+    }
+
+    return null;
   }
 
   private JsonObject createTaskSchema() {

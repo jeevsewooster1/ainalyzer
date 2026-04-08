@@ -7,7 +7,6 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.model.*;
 
 import javax.swing.*;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -31,55 +30,77 @@ public class StateManager {
   }
 
   public void initializeNewEndpoint(HttpRequestResponse requestResponse) {
-    state.setBaseRequestResponse(requestResponse);
-    state.setCurrentTask(null);
-    state.setCurrentStep(null);
+    RequestThread requestThread = new RequestThread(requestResponse);
+    requestThread.setGeneratingTasks(true);
+    state.addRequestThread(requestThread);
+    view.setRequestThreads(state.getRequestThreads());
+    selectRequestThread(requestThread);
     state.setCurrentState(ExecutionState.State.GENERATING_TASKS);
 
-    view.clearExecution();
+    generateTasksForThread(requestThread);
+  }
+
+  public void selectRequestThread(RequestThread requestThread) {
+    state.setCurrentThread(requestThread);
+    state.setCurrentTask(null);
+    state.setCurrentStep(null);
+
+    view.selectRequestThread(requestThread);
+    view.setConversation(requestThread != null ? requestThread.getConversation() : List.of());
+    view.setConversationEnabled(requestThread != null);
+
+    if (requestThread == null) {
+      view.setTasks(List.of());
+      view.clearSteps();
+      view.clearExecution();
+      view.setNextButtonEnabled(false);
+      return;
+    }
+
+    view.setTasks(requestThread.getTasks());
     view.clearSteps();
+    view.clearExecution();
+
+    Task selectedTask = requestThread.getSelectedTask();
+    if (selectedTask != null && requestThread.getTasks().contains(selectedTask)) {
+      view.selectTask(selectedTask);
+      selectTask(selectedTask);
+      return;
+    }
+
     view.setNextButtonEnabled(false);
-
-    view.setThoughtProcess("Analyzing endpoint and generating tasks...");
-
-    CompletableFuture.runAsync(() -> {
-      try {
-        List<Task> tasks = aiService.generateTasks(requestResponse);
-
-        SwingUtilities.invokeLater(() -> {
-          view.setTasks(tasks);
-          view.setThoughtProcess("Tasks generated successfully. Select a task to begin.");
-          state.setCurrentState(ExecutionState.State.IDLE);
-        });
-      } catch (Exception e) {
-        api.logging().logToError("Error generating tasks: " + e.getMessage());
-        SwingUtilities.invokeLater(() -> {
-          view.setThoughtProcess("Error generating tasks: " + e.getMessage());
-          state.setCurrentState(ExecutionState.State.IDLE);
-        });
-      }
-    });
+    view.setThoughtProcess(requestThread.getStatusMessage());
   }
 
   public void selectTask(Task task) {
+    RequestThread currentThread = state.getCurrentThread();
+    if (currentThread == null) {
+      return;
+    }
+
+    currentThread.setSelectedTask(task);
     state.setCurrentTask(task);
     state.setCurrentStep(null);
-    view.clearExecution();
 
     List<Step> existingSteps = task.getSteps();
     view.setSteps(existingSteps);
+    view.setNextButtonEnabled(true);
 
-    if (existingSteps != null && !existingSteps.isEmpty()) {
+    Step selectedStep = task.getSelectedStep();
+    if (selectedStep != null && existingSteps.contains(selectedStep)) {
+      view.selectStep(selectedStep);
+      displayStepDetails(selectedStep);
+    } else if (existingSteps != null && !existingSteps.isEmpty()) {
       Step lastStep = existingSteps.get(existingSteps.size() - 1);
-      state.setCurrentStep(lastStep);
+      task.setSelectedStep(lastStep);
       view.selectStep(lastStep);
       displayStepDetails(lastStep);
-      view.setThoughtProcess("Resumed task: " + task.getName() + ". Showing last step.");
     } else {
+      view.clearExecution();
       view.setThoughtProcess("Task selected: " + task.getName() + ". Click 'Next' to begin.");
+      view.setRequest(null);
+      view.setResponse(null);
     }
-
-    view.setNextButtonEnabled(true);
   }
 
   public void displayStepDetails(Step step) {
@@ -90,17 +111,16 @@ public class StateManager {
     }
 
     state.setCurrentStep(step);
+    if (state.getCurrentTask() != null) {
+      state.getCurrentTask().setSelectedStep(step);
+    }
 
-    String thought = step.getThoughtProcess() != null ? step.getThoughtProcess() : "";
-    String summary = step.getSummary() != null ? step.getSummary() : "No summary available.";
-
-    view.setThoughtProcess(thought + "\n\n--- Summary ---\n" + summary);
     view.setRequest(step.getRequest());
     view.setResponse(step.getResponse());
   }
 
   public void executeNextStep() {
-    if (state.getCurrentTask() == null) {
+    if (state.getCurrentThread() == null || state.getCurrentTask() == null) {
       return;
     }
 
@@ -110,22 +130,32 @@ public class StateManager {
     view.setThoughtProcess("AI is analyzing and creating next step...");
 
     CompletableFuture.runAsync(() -> {
+      RequestThread currentThread = state.getCurrentThread();
+      Task currentTask = state.getCurrentTask();
       try {
-        List<Step> previousSteps = new ArrayList<>(state.getCurrentTask().getSteps());
+        List<Step> previousSteps = List.copyOf(currentTask.getSteps());
 
         Step newStep = aiService.generateStep(
-            state.getBaseRequestResponse(),
-            state.getCurrentTask(),
-            previousSteps);
+            currentThread.getRequestResponse(),
+            currentTask,
+            previousSteps,
+            currentThread.getConversation());
 
         state.setCurrentStep(newStep);
+        currentThread.addConversationMessage(
+            ThreadMessage.Role.AI,
+            "Next step: " + newStep.getName() + "\n\nReasoning:\n" + newStep.getThoughtProcess());
 
         SwingUtilities.invokeLater(() -> {
-          state.getCurrentTask().addStep(newStep);
-          view.addStep(newStep);
+          currentTask.addStep(newStep);
+          currentTask.setSelectedStep(newStep);
+          if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+            view.addStep(newStep);
+            view.setConversation(currentThread.getConversation());
+          }
         });
 
-        HttpService httpService = state.getBaseRequestResponse().httpService();
+        HttpService httpService = currentThread.getRequestResponse().httpService();
         if (!newStep.parseRequest(httpService)) {
           String requestParseError = newStep.getRequestParseError();
           String errorSummary = "Error: AI failed to generate a valid HTTP request for this step."
@@ -135,27 +165,34 @@ public class StateManager {
           newStep.setSummary(errorSummary);
 
           SwingUtilities.invokeLater(() -> {
-            view.setThoughtProcess(newStep.getThoughtProcess() +
-                "\n\nSummary: " + errorSummary);
-            view.setRequest(null);
-            view.setResponse(null);
-            view.setNextButtonEnabled(true);
-            state.setCurrentState(ExecutionState.State.IDLE);
+            if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+              currentThread.addConversationMessage(ThreadMessage.Role.AI, errorSummary);
+              view.setConversation(currentThread.getConversation());
+              view.setThoughtProcess(errorSummary);
+              view.setRequest(null);
+              view.setResponse(null);
+              view.setNextButtonEnabled(true);
+              state.setCurrentState(ExecutionState.State.IDLE);
+            }
           });
           return;
         }
 
         SwingUtilities.invokeLater(() -> {
-          view.setThoughtProcess(newStep.getThoughtProcess());
-          view.setRequest(newStep.getRequest());
-          view.setResponse(null);
+          if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+            view.setThoughtProcess("Executing step: " + newStep.getName());
+            view.setRequest(newStep.getRequest());
+            view.setResponse(null);
+          }
         });
 
         final HttpResponse httpResponse = requestExecutor.executeRequest(newStep.getRequest());
         newStep.setResponse(httpResponse);
 
         SwingUtilities.invokeLater(() -> {
-          view.setResponse(httpResponse);
+          if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+            view.setResponse(httpResponse);
+          }
         });
 
         String summary;
@@ -166,20 +203,90 @@ public class StateManager {
           summary = aiService.generateSummary(newStep);
         }
         newStep.setSummary(summary);
+        currentThread.addConversationMessage(
+            ThreadMessage.Role.AI,
+            "Step result for '" + newStep.getName() + "':\n" + summary);
 
         SwingUtilities.invokeLater(() -> {
 
-          view.setThoughtProcess(newStep.getThoughtProcess() +
-              "\n\nSummary: " + summary);
-          view.setNextButtonEnabled(true);
-          state.setCurrentState(ExecutionState.State.IDLE);
+          if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+            view.setConversation(currentThread.getConversation());
+            view.setThoughtProcess(summary);
+            view.setNextButtonEnabled(true);
+            state.setCurrentState(ExecutionState.State.IDLE);
+          }
         });
 
       } catch (Exception e) {
         api.logging().logToError("Error executing step: " + e.getMessage());
         SwingUtilities.invokeLater(() -> {
-          view.setThoughtProcess("Error: " + e.getMessage());
-          view.setNextButtonEnabled(true);
+          if (state.getCurrentThread() == currentThread && state.getCurrentTask() == currentTask) {
+            view.setThoughtProcess("Error: " + e.getMessage());
+            view.setNextButtonEnabled(true);
+            state.setCurrentState(ExecutionState.State.IDLE);
+          }
+        });
+      }
+    });
+  }
+
+  public void sendCurrentThreadMessage(String content) {
+    RequestThread currentThread = state.getCurrentThread();
+    if (currentThread == null || content == null || content.isBlank()) {
+      return;
+    }
+
+    currentThread.addConversationMessage(ThreadMessage.Role.USER, content);
+    view.setConversation(currentThread.getConversation());
+  }
+
+  private void generateTasksForThread(RequestThread requestThread) {
+    requestThread.setGeneratingTasks(true);
+    requestThread.setStatusMessage("Analyzing endpoint and generating tasks...");
+
+    view.setRequestThreads(state.getRequestThreads());
+    if (state.getCurrentThread() == requestThread) {
+      view.clearExecution();
+      view.clearSteps();
+      view.setTasks(List.of());
+      view.setThoughtProcess(requestThread.getStatusMessage());
+      view.setNextButtonEnabled(false);
+    }
+
+    CompletableFuture.runAsync(() -> {
+      try {
+        List<Task> tasks = aiService.generateTasks(requestThread.getRequestResponse());
+        requestThread.setTasks(tasks);
+        requestThread.setGeneratingTasks(false);
+        requestThread.setStatusMessage("Tasks generated successfully. Select a task to begin.");
+        requestThread.addConversationMessage(
+            ThreadMessage.Role.AI,
+            "Generated " + tasks.size() + " tasks for this request thread. Select a task and use the chat below to steer the next steps.");
+
+        SwingUtilities.invokeLater(() -> {
+          view.setRequestThreads(state.getRequestThreads());
+          if (state.getCurrentThread() == requestThread) {
+            view.setConversation(requestThread.getConversation());
+            view.setTasks(tasks);
+            view.clearSteps();
+            view.clearExecution();
+            view.setThoughtProcess(requestThread.getStatusMessage());
+            view.setNextButtonEnabled(false);
+          }
+          state.setCurrentState(ExecutionState.State.IDLE);
+        });
+      } catch (Exception e) {
+        requestThread.setGeneratingTasks(false);
+        requestThread.setStatusMessage("Error generating tasks: " + e.getMessage());
+        api.logging().logToError(requestThread.getStatusMessage());
+
+        SwingUtilities.invokeLater(() -> {
+          view.setRequestThreads(state.getRequestThreads());
+          if (state.getCurrentThread() == requestThread) {
+            view.setConversation(requestThread.getConversation());
+            view.setThoughtProcess(requestThread.getStatusMessage());
+            view.setNextButtonEnabled(false);
+          }
           state.setCurrentState(ExecutionState.State.IDLE);
         });
       }

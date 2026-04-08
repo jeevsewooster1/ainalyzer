@@ -2,6 +2,9 @@ package burp.model;
 
 import burp.api.montoya.http.message.HttpRequestResponse;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ExecutionState {
 
   public enum State {
@@ -13,12 +16,14 @@ public class ExecutionState {
   }
 
   private State currentState;
-  private HttpRequestResponse baseRequestResponse;
+  private final List<RequestThread> requestThreads;
+  private RequestThread currentThread;
   private Task currentTask;
   private Step currentStep;
 
   public ExecutionState() {
     this.currentState = State.IDLE;
+    this.requestThreads = new ArrayList<>();
   }
 
   public State getCurrentState() {
@@ -30,11 +35,23 @@ public class ExecutionState {
   }
 
   public HttpRequestResponse getBaseRequestResponse() {
-    return baseRequestResponse;
+    return currentThread != null ? currentThread.getRequestResponse() : null;
   }
 
-  public void setBaseRequestResponse(HttpRequestResponse reqResp) {
-    this.baseRequestResponse = reqResp;
+  public List<RequestThread> getRequestThreads() {
+    return requestThreads;
+  }
+
+  public void addRequestThread(RequestThread requestThread) {
+    this.requestThreads.add(requestThread);
+  }
+
+  public RequestThread getCurrentThread() {
+    return currentThread;
+  }
+
+  public void setCurrentThread(RequestThread currentThread) {
+    this.currentThread = currentThread;
   }
 
   public Task getCurrentTask() {

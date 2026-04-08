@@ -8,6 +8,7 @@ public class Task {
   private String name;
   private String description;
   private List<Step> steps;
+  private Step selectedStep;
 
   public Task(String name, String description) {
     this.name = name;
@@ -33,6 +34,14 @@ public class Task {
 
   public int getStepCount() {
     return steps.size();
+  }
+
+  public Step getSelectedStep() {
+    return selectedStep;
+  }
+
+  public void setSelectedStep(Step selectedStep) {
+    this.selectedStep = selectedStep;
   }
 
   @Override
