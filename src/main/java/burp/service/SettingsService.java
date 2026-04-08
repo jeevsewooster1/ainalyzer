@@ -9,16 +9,40 @@ import java.util.Map;
 
 public class SettingsService {
 
+  public enum ProviderType {
+    LOCAL_OPENAI_COMPATIBLE("Local / OpenAI-compatible"),
+    OPENAI("OpenAI");
+
+    private final String displayName;
+
+    ProviderType(String displayName) {
+      this.displayName = displayName;
+    }
+
+    public String displayName() {
+      return displayName;
+    }
+
+    @Override
+    public String toString() {
+      return displayName;
+    }
+  }
+
+  private static final String PROVIDER_TYPE_KEY = "ainalyzer.provider.type";
   private static final String API_ENDPOINT_KEY = "ainalyzer.api.endpoint";
   private static final String MODEL_NAME_KEY = "ainalyzer.model.name";
   private static final String API_KEY_KEY = "ainalyzer.api.key";
   private static final String EXTRA_HEADERS_KEY = "ainalyzer.extra.headers";
 
-  private static final String DEFAULT_API_ENDPOINT = "http://localhost:1234/v1/chat/completions";
-  private static final String DEFAULT_MODEL_NAME = "meta-llama-3.1-8b-instruct";
+  private static final String DEFAULT_LOCAL_API_ENDPOINT = "http://localhost:11434/v1/chat/completions";
+  private static final String DEFAULT_OPENAI_API_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+  private static final String DEFAULT_LOCAL_MODEL_NAME = "llama3.1";
+  private static final String DEFAULT_OPENAI_MODEL_NAME = "gpt-4.1-mini";
 
   private final MontoyaApi api;
 
+  private ProviderType providerType;
   private String apiEndpoint;
   private String modelName;
   private String apiKey;
@@ -30,16 +54,17 @@ public class SettingsService {
   }
 
   private void loadSettings() {
+    this.providerType = parseProviderType(api.persistence().preferences().getString(PROVIDER_TYPE_KEY));
     this.apiEndpoint = api.persistence().preferences().getString(API_ENDPOINT_KEY);
     this.modelName = api.persistence().preferences().getString(MODEL_NAME_KEY);
     this.apiKey = api.persistence().preferences().getString(API_KEY_KEY);
     this.extraHeaders = api.persistence().preferences().getString(EXTRA_HEADERS_KEY);
 
     if (this.apiEndpoint == null || this.apiEndpoint.isEmpty()) {
-      setApiEndpoint(DEFAULT_API_ENDPOINT);
+      setApiEndpoint(defaultApiEndpoint(providerType));
     }
     if (this.modelName == null || this.modelName.isEmpty()) {
-      setModelName(DEFAULT_MODEL_NAME);
+      setModelName(defaultModelName(providerType));
     }
     if (this.apiKey == null) {
       this.apiKey = "";
@@ -47,6 +72,10 @@ public class SettingsService {
     if (this.extraHeaders == null) {
       this.extraHeaders = "";
     }
+  }
+
+  public ProviderType getProviderType() {
+    return providerType;
   }
 
   public String getApiEndpoint() {
@@ -63,6 +92,11 @@ public class SettingsService {
 
   public String getExtraHeaders() {
     return extraHeaders;
+  }
+
+  public void setProviderType(ProviderType providerType) {
+    this.providerType = providerType;
+    api.persistence().preferences().setString(PROVIDER_TYPE_KEY, providerType.name());
   }
 
   public void setApiEndpoint(String apiEndpoint) {
@@ -85,7 +119,8 @@ public class SettingsService {
     api.persistence().preferences().setString(EXTRA_HEADERS_KEY, extraHeaders);
   }
 
-  public void validateSettings(String apiEndpoint, String modelName, String extraHeaders) {
+  public void validateSettings(ProviderType providerType, String apiEndpoint, String modelName, String apiKey,
+      String extraHeaders) {
     if (apiEndpoint == null || apiEndpoint.isBlank()) {
       throw new IllegalArgumentException("API endpoint is required.");
     }
@@ -104,7 +139,31 @@ public class SettingsService {
       throw new IllegalArgumentException("Model name is required.");
     }
 
+    if (providerType == ProviderType.OPENAI && (apiKey == null || apiKey.isBlank())) {
+      throw new IllegalArgumentException("API key is required for OpenAI.");
+    }
+
     parseExtraHeaders(extraHeaders);
+  }
+
+  public String defaultApiEndpoint(ProviderType providerType) {
+    return providerType == ProviderType.OPENAI ? DEFAULT_OPENAI_API_ENDPOINT : DEFAULT_LOCAL_API_ENDPOINT;
+  }
+
+  public String defaultModelName(ProviderType providerType) {
+    return providerType == ProviderType.OPENAI ? DEFAULT_OPENAI_MODEL_NAME : DEFAULT_LOCAL_MODEL_NAME;
+  }
+
+  private ProviderType parseProviderType(String persistedValue) {
+    if (persistedValue == null || persistedValue.isBlank()) {
+      return ProviderType.LOCAL_OPENAI_COMPATIBLE;
+    }
+
+    try {
+      return ProviderType.valueOf(persistedValue);
+    } catch (IllegalArgumentException e) {
+      return ProviderType.LOCAL_OPENAI_COMPATIBLE;
+    }
   }
 
   public Map<String, String> parseExtraHeaders(String extraHeaders) {

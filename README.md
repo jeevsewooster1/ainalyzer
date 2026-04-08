@@ -37,14 +37,24 @@ The extension JAR is produced under `build/libs/`.
 ## Configure
 
 1. Open the `AInalyzer` tab in Burp.
-2. Enter your chat completions endpoint and model name.
-3. Save the settings.
+2. Choose a provider preset.
+3. Confirm or adjust the endpoint and model.
+4. Enter an API key when using OpenAI.
+5. Save the settings.
 
-Example endpoints:
+Provider presets:
 
-- Ollama: `http://localhost:11434/v1/chat/completions`
-- LM Studio: `http://localhost:1234/v1/chat/completions`
-- OpenRouter: `https://openrouter.ai/api/v1/chat/completions`
+- `Local / OpenAI-compatible`
+  - for Ollama, LM Studio, and similar local servers
+  - default endpoint: `http://localhost:11434/v1/chat/completions`
+- `OpenAI`
+  - default endpoint: `https://api.openai.com/v1/chat/completions`
+  - requires bearer-token auth
+
+Example models:
+
+- Ollama: `llama3.1`, `qwen2.5`
+- OpenAI: `gpt-4.1-mini`, `gpt-4.1`, `o4-mini`
 
 ## Usage
 

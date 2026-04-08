@@ -33,6 +33,8 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   private JTextField modelField;
   private JPasswordField apiKeyField;
   private JTextArea extraHeadersArea;
+  private JComboBox<SettingsService.ProviderType> providerTypeComboBox;
+  private JLabel providerHelpLabel;
 
   public AinalyzerTab(MontoyaApi api, SettingsService settingsService, AiService aiService) {
     this.api = api;
@@ -86,6 +88,10 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     JLabel modelLabel = new JLabel("Model:");
     modelField = new JTextField(settingsService.getModelName(), 15);
 
+    JLabel providerLabel = new JLabel("Provider:");
+    providerTypeComboBox = new JComboBox<>(SettingsService.ProviderType.values());
+    providerTypeComboBox.setSelectedItem(settingsService.getProviderType());
+
     JLabel apiKeyLabel = new JLabel("API Key:");
     apiKeyField = new JPasswordField(settingsService.getApiKey(), 20);
 
@@ -94,21 +100,30 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     extraHeadersArea.setLineWrap(true);
     extraHeadersArea.setWrapStyleWord(true);
 
+    providerHelpLabel = new JLabel();
+    updateProviderFields((SettingsService.ProviderType) providerTypeComboBox.getSelectedItem(), false);
+
+    providerTypeComboBox.addActionListener(e -> updateProviderFields(
+        (SettingsService.ProviderType) providerTypeComboBox.getSelectedItem(),
+        true));
+
     JButton saveButton = new JButton("Save");
 
     saveButton.addActionListener(e -> {
+      SettingsService.ProviderType providerType = (SettingsService.ProviderType) providerTypeComboBox.getSelectedItem();
       String newEndpoint = apiEndpointField.getText().trim();
       String newModel = modelField.getText().trim();
       String newApiKey = new String(apiKeyField.getPassword()).trim();
       String newExtraHeaders = extraHeadersArea.getText().trim();
 
       try {
-        settingsService.validateSettings(newEndpoint, newModel, newExtraHeaders);
+        settingsService.validateSettings(providerType, newEndpoint, newModel, newApiKey, newExtraHeaders);
       } catch (IllegalArgumentException ex) {
         JOptionPane.showMessageDialog(this, ex.getMessage(), "Invalid configuration", JOptionPane.ERROR_MESSAGE);
         return;
       }
 
+      settingsService.setProviderType(providerType);
       settingsService.setApiEndpoint(newEndpoint);
       settingsService.setModelName(newModel);
       settingsService.setApiKey(newApiKey);
@@ -122,6 +137,20 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     gbc.gridx = 0;
     gbc.gridy = 0;
     gbc.weightx = 0;
+    configPanel.add(providerLabel, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    configPanel.add(providerTypeComboBox, gbc);
+
+    gbc.gridx = 1;
+    gbc.gridy = 1;
+    gbc.weightx = 1;
+    configPanel.add(providerHelpLabel, gbc);
+
+    gbc.gridx = 0;
+    gbc.gridy = 2;
+    gbc.weightx = 0;
     configPanel.add(apiLabel, gbc);
 
     gbc.gridx = 1;
@@ -129,7 +158,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     configPanel.add(apiEndpointField, gbc);
 
     gbc.gridx = 0;
-    gbc.gridy = 1;
+    gbc.gridy = 3;
     gbc.weightx = 0;
     configPanel.add(modelLabel, gbc);
 
@@ -138,7 +167,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     configPanel.add(modelField, gbc);
 
     gbc.gridx = 0;
-    gbc.gridy = 2;
+    gbc.gridy = 4;
     gbc.weightx = 0;
     configPanel.add(apiKeyLabel, gbc);
 
@@ -147,7 +176,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     configPanel.add(apiKeyField, gbc);
 
     gbc.gridx = 0;
-    gbc.gridy = 3;
+    gbc.gridy = 5;
     gbc.weightx = 0;
     gbc.anchor = GridBagConstraints.NORTHWEST;
     configPanel.add(extraHeadersLabel, gbc);
@@ -158,13 +187,32 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     configPanel.add(new JScrollPane(extraHeadersArea), gbc);
 
     gbc.gridx = 1;
-    gbc.gridy = 4;
+    gbc.gridy = 6;
     gbc.weightx = 0;
     gbc.fill = GridBagConstraints.NONE;
     gbc.anchor = GridBagConstraints.EAST;
     configPanel.add(saveButton, gbc);
 
     return configPanel;
+  }
+
+  private void updateProviderFields(SettingsService.ProviderType providerType, boolean applyDefaults) {
+    if (providerType == null) {
+      return;
+    }
+
+    if (applyDefaults) {
+      apiEndpointField.setText(settingsService.defaultApiEndpoint(providerType));
+      modelField.setText(settingsService.defaultModelName(providerType));
+      if (providerType == SettingsService.ProviderType.LOCAL_OPENAI_COMPATIBLE) {
+        apiKeyField.setText("");
+      }
+    }
+
+    boolean openAi = providerType == SettingsService.ProviderType.OPENAI;
+    providerHelpLabel.setText(openAi
+        ? "OpenAI uses bearer-token auth and the official chat completions endpoint."
+        : "Use this for Ollama, LM Studio, and other OpenAI-compatible local endpoints.");
   }
 
   private JPanel createPanelWithTitle(String title, JComponent content) {
