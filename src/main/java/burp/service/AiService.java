@@ -19,10 +19,38 @@ import java.util.List;
 
 public class AiService {
 
+  private static final String TASK_GENERATION_PROMPT = """
+      You are a senior penetration testing expert.
+      Analyze the provided HTTP request and response and propose 3 to 5 high-impact security testing tasks.
+      Focus on concrete follow-up tests such as IDOR, SQL injection, broken access control, SSRF, XSS, CSRF, and command injection when relevant.
+      Return only JSON matching the provided schema.
+      Each item must contain:
+      - name: a short human-readable task title
+      - description: one concise sentence describing the test objective
+      Do not return raw HTTP requests in this task-generation response.
+      """;
+
+  private static final String STEP_GENERATION_PROMPT = """
+      You are a senior penetration testing expert.
+      You will be given a base request, a specific task, and the history of previous steps for that task.
+      Determine the next logical single test to execute without repeating prior steps.
+      Return only JSON matching the provided schema.
+
+      Field requirements:
+      1. name: a short human-readable title for this test. It must not be just a URL, endpoint path, or code snippet.
+      2. thought_process: concise reasoning for why this request is the right next step.
+      3. request: one complete raw HTTP request string using literal \\r\\n line endings throughout.
+      """;
+
+  private static final String SUMMARY_GENERATION_PROMPT = """
+      You are a senior penetration testing expert.
+      Analyze the provided test request, response, and reasoning, then summarize the security significance of the result.
+      Return only JSON matching the provided schema.
+      The summary must be concise, factual, and useful for deciding the next follow-up test.
+      """;
+
   private final MontoyaApi api;
   private final Gson gson;
-  private String apiEndpoint;
-  private String model;
 
   private final JsonObject taskGenerationSchema;
   private final JsonObject stepGenerationSchema;
@@ -44,14 +72,6 @@ public class AiService {
     String responseStr = requestResponse.response() != null ? requestResponse.response().toString()
         : "No response provided.";
 
-    String systemPrompt = "You are a senior penetration testing expert. Your goal is to analyze an HTTP request " +
-        "and response to create a list of 3-5 high-impact security testing tasks to perform. " +
-        "Focus on vulnerabilities like IDOR, SQL Injection, Broken Access Control, and Command Injection. " +
-        "Your response must be a single, complete, raw HTTP request. " +
-        "CRITICAL: All lines in the 'request' field MUST be separated by \\r\\n (CRLF) characters. " +
-        "You MUST use \\r\\n." +
-        "Respond *only* with the provided JSON schema.";
-
     String userPrompt = String.format(
         "Analyze the following HTTP interaction and generate the task list.\n\n" +
             "--- REQUEST ---\n%s\n\n" +
@@ -59,7 +79,7 @@ public class AiService {
         requestStr, responseStr);
 
     List<JsonObject> messages = new ArrayList<>();
-    messages.add(createMessage("system", systemPrompt));
+    messages.add(createMessage("system", TASK_GENERATION_PROMPT));
     messages.add(createMessage("user", userPrompt));
 
     String aiResponse = callAi(messages, this.taskGenerationSchema);
@@ -68,22 +88,8 @@ public class AiService {
 
   public Step generateStep(HttpRequestResponse baseReqResp, Task task, List<Step> previousSteps) throws Exception {
 
-    String systemPrompt = "You are a senior penetration testing expert. Your goal is to execute a single " +
-        "security test. You will be given a base request, a specific task, and the history of " +
-        "all previous steps (your own actions and their results). " +
-        "Analyze this history to determine the *next logical step*. Do not repeat previous steps. " +
-        "Your response MUST be a JSON object adhering to the provided schema." +
-        "\n\n" +
-        "CRITICAL RULES FOR THE JSON FIELDS:\n" +
-        "1. 'name' FIELD: This MUST be a short, human-readable title for the test (e.g., 'Test for SQLi in login'). " +
-        "   It MUST NOT be a URL, an API endpoint, or a raw code snippet.\n" +
-        "2. 'request' FIELD: This MUST be a single string containing the complete, raw HTTP request. " +
-        "   All line breaks in this string MUST be represented as '\\r\\n' (CRLF). " +
-        "   DO NOT use just '\\n'. YOU MUST USE '\\r\\n' for every line termination. " +
-        "   Example of a correct line: 'Host: example.com\\r\\n'";
-
     List<JsonObject> messages = new ArrayList<>();
-    messages.add(createMessage("system", systemPrompt));
+    messages.add(createMessage("system", STEP_GENERATION_PROMPT));
 
     messages.add(createMessage("user",
         "Start of test.\n" +
@@ -125,12 +131,6 @@ public class AiService {
       return "Error: Step is missing request or response.";
     }
 
-    String systemPrompt = "You are a senior penetration testing expert. Your goal is to analyze an HTTP request " +
-        "and response to create a list of 3-5 high-impact security testing tasks to perform. " +
-        "Focus on vulnerabilities like IDOR, SQL Injection, Broken Access Control, and Command Injection. " +
-        "Each task MUST have a short, descriptive name and a clear description of the goal. " +
-        "Respond *only* with the provided JSON schema.";
-
     String userPrompt = String.format(
         "Analyze the following test step:\n\n" +
             "--- THOUGHTS ---\n%s\n\n" +
@@ -141,7 +141,7 @@ public class AiService {
         response.toString());
 
     List<JsonObject> messages = new ArrayList<>();
-    messages.add(createMessage("system", systemPrompt));
+    messages.add(createMessage("system", SUMMARY_GENERATION_PROMPT));
     messages.add(createMessage("user", userPrompt));
 
     String aiResponse = callAi(messages, this.summaryGenerationSchema);
@@ -204,15 +204,9 @@ public class AiService {
 
     JsonObject responseObj = gson.fromJson(response.toString(), JsonObject.class);
 
-    if (responseObj.has("choices") && responseObj.get("choices").isJsonArray()
-        && !responseObj.getAsJsonArray("choices").isEmpty()) {
-      JsonObject firstChoice = responseObj.getAsJsonArray("choices").get(0).getAsJsonObject();
-      if (firstChoice.has("message") && firstChoice.get("message").isJsonObject()) {
-        JsonObject message = firstChoice.getAsJsonObject("message");
-        if (message.has("content") && message.get("content").isJsonPrimitive()) {
-          return message.get("content").getAsString();
-        }
-      }
+    String content = extractResponseContent(responseObj);
+    if (content != null && !content.isBlank()) {
+      return content;
     }
 
     api.logging().logToError("Failed to parse AI response. Unexpected JSON structure: " + response);
@@ -232,7 +226,8 @@ public class AiService {
                 "name": { "type": "string" },
                 "description": { "type": "string" }
               },
-              "required": ["name", "description"]
+              "required": ["name", "description"],
+              "additionalProperties": false
             }
           }
         }
@@ -261,7 +256,8 @@ public class AiService {
                 "description": "The complete, raw HTTP request string. CRITICAL: All line breaks MUST be the literal string '\\r\\n' (CRLF). Example: 'GET / HTTP/1.1\\r\\nHost: example.com\\r\\n\\r\\n'"
               }
             },
-            "required": ["name", "thought_process", "request"]
+            "required": ["name", "thought_process", "request"],
+            "additionalProperties": false
           }
         }
         """;
@@ -278,7 +274,8 @@ public class AiService {
             "properties": {
               "summary": { "type": "string", "description": "Concise analysis of the test result (2-3 sentences)." }
             },
-            "required": ["summary"]
+            "required": ["summary"],
+            "additionalProperties": false
           }
         }
         """;
@@ -329,6 +326,46 @@ public class AiService {
       api.logging().logToError("Faulty JSON: " + aiJsonResponse);
       return "Error: Failed to parse AI summary.";
     }
+  }
+
+  private String extractResponseContent(JsonObject responseObj) {
+    if (!responseObj.has("choices") || !responseObj.get("choices").isJsonArray()
+        || responseObj.getAsJsonArray("choices").isEmpty()) {
+      return null;
+    }
+
+    JsonObject firstChoice = responseObj.getAsJsonArray("choices").get(0).getAsJsonObject();
+    if (!firstChoice.has("message") || !firstChoice.get("message").isJsonObject()) {
+      return null;
+    }
+
+    JsonObject message = firstChoice.getAsJsonObject("message");
+    if (!message.has("content")) {
+      return null;
+    }
+
+    JsonElement content = message.get("content");
+    if (content.isJsonPrimitive()) {
+      return content.getAsString();
+    }
+
+    if (!content.isJsonArray()) {
+      return null;
+    }
+
+    StringBuilder combinedText = new StringBuilder();
+    for (JsonElement element : content.getAsJsonArray()) {
+      if (!element.isJsonObject()) {
+        continue;
+      }
+
+      JsonObject part = element.getAsJsonObject();
+      if (part.has("text") && part.get("text").isJsonPrimitive()) {
+        combinedText.append(part.get("text").getAsString());
+      }
+    }
+
+    return combinedText.toString();
   }
 
   private JsonObject createMessage(String role, String content) {
