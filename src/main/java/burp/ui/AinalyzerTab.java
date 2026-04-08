@@ -25,6 +25,8 @@ public class AinalyzerTab extends JPanel {
 
   private JTextField apiEndpointField;
   private JTextField modelField;
+  private JPasswordField apiKeyField;
+  private JTextArea extraHeadersArea;
 
   public AinalyzerTab(MontoyaApi api, SettingsService settingsService, AiService aiService) {
     this.api = api;
@@ -64,8 +66,13 @@ public class AinalyzerTab extends JPanel {
   }
 
   private JPanel createConfigPanel() {
-    JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+    JPanel configPanel = new JPanel(new GridBagLayout());
     configPanel.setBorder(BorderFactory.createTitledBorder("Configuration"));
+
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.insets = new Insets(4, 4, 4, 4);
+    gbc.anchor = GridBagConstraints.WEST;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
 
     JLabel apiLabel = new JLabel("API Endpoint:");
     apiEndpointField = new JTextField(settingsService.getApiEndpoint(), 30);
@@ -73,25 +80,83 @@ public class AinalyzerTab extends JPanel {
     JLabel modelLabel = new JLabel("Model:");
     modelField = new JTextField(settingsService.getModelName(), 15);
 
+    JLabel apiKeyLabel = new JLabel("API Key:");
+    apiKeyField = new JPasswordField(settingsService.getApiKey(), 20);
+
+    JLabel extraHeadersLabel = new JLabel("Extra Headers:");
+    extraHeadersArea = new JTextArea(settingsService.getExtraHeaders(), 3, 30);
+    extraHeadersArea.setLineWrap(true);
+    extraHeadersArea.setWrapStyleWord(true);
+
     JButton saveButton = new JButton("Save");
 
     saveButton.addActionListener(e -> {
       String newEndpoint = apiEndpointField.getText().trim();
       String newModel = modelField.getText().trim();
+      String newApiKey = new String(apiKeyField.getPassword()).trim();
+      String newExtraHeaders = extraHeadersArea.getText().trim();
+
+      try {
+        settingsService.validateSettings(newEndpoint, newModel, newExtraHeaders);
+      } catch (IllegalArgumentException ex) {
+        JOptionPane.showMessageDialog(this, ex.getMessage(), "Invalid configuration", JOptionPane.ERROR_MESSAGE);
+        return;
+      }
 
       settingsService.setApiEndpoint(newEndpoint);
       settingsService.setModelName(newModel);
+      settingsService.setApiKey(newApiKey);
+      settingsService.setExtraHeaders(newExtraHeaders);
 
       String message = "Settings saved successfully!";
       api.logging().logToOutput(message);
       JOptionPane.showMessageDialog(this, message);
     });
 
-    configPanel.add(apiLabel);
-    configPanel.add(apiEndpointField);
-    configPanel.add(modelLabel);
-    configPanel.add(modelField);
-    configPanel.add(saveButton);
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.weightx = 0;
+    configPanel.add(apiLabel, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    configPanel.add(apiEndpointField, gbc);
+
+    gbc.gridx = 0;
+    gbc.gridy = 1;
+    gbc.weightx = 0;
+    configPanel.add(modelLabel, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    configPanel.add(modelField, gbc);
+
+    gbc.gridx = 0;
+    gbc.gridy = 2;
+    gbc.weightx = 0;
+    configPanel.add(apiKeyLabel, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    configPanel.add(apiKeyField, gbc);
+
+    gbc.gridx = 0;
+    gbc.gridy = 3;
+    gbc.weightx = 0;
+    gbc.anchor = GridBagConstraints.NORTHWEST;
+    configPanel.add(extraHeadersLabel, gbc);
+
+    gbc.gridx = 1;
+    gbc.weightx = 1;
+    gbc.fill = GridBagConstraints.BOTH;
+    configPanel.add(new JScrollPane(extraHeadersArea), gbc);
+
+    gbc.gridx = 1;
+    gbc.gridy = 4;
+    gbc.weightx = 0;
+    gbc.fill = GridBagConstraints.NONE;
+    gbc.anchor = GridBagConstraints.EAST;
+    configPanel.add(saveButton, gbc);
 
     return configPanel;
   }

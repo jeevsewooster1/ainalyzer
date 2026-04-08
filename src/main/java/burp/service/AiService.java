@@ -16,6 +16,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class AiService {
 
@@ -166,6 +167,7 @@ public class AiService {
     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
     conn.setRequestMethod("POST");
     conn.setRequestProperty("Content-Type", "application/json");
+    applyConfiguredHeaders(conn);
     conn.setConnectTimeout(10000); // 10 seconds
     conn.setReadTimeout(6000000); // 100 minutes because my local llms are slow
     conn.setDoOutput(true);
@@ -211,6 +213,18 @@ public class AiService {
 
     api.logging().logToError("Failed to parse AI response. Unexpected JSON structure: " + response);
     throw new RuntimeException("Failed to parse AI response: " + response);
+  }
+
+  private void applyConfiguredHeaders(HttpURLConnection conn) {
+    String apiKey = settingsService.getApiKey();
+    if (apiKey != null && !apiKey.isBlank()) {
+      conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+    }
+
+    Map<String, String> extraHeaders = settingsService.parseExtraHeaders(settingsService.getExtraHeaders());
+    for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
+      conn.setRequestProperty(entry.getKey(), entry.getValue());
+    }
   }
 
   private JsonObject createTaskSchema() {
