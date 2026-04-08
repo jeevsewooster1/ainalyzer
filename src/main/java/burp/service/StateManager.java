@@ -3,10 +3,8 @@ package burp.service;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.HttpRequestResponse;
-import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.model.*;
-import burp.ui.*;
 
 import javax.swing.*;
 import java.util.ArrayList;
@@ -19,10 +17,7 @@ public class StateManager {
   private AiService aiService;
   private RequestExecutor requestExecutor;
   private ExecutionState state;
-
-  private TasksPanel tasksPanel;
-  private StepsPanel stepsPanel;
-  private ExecutionPanel executionPanel;
+  private StateManagerView view;
 
   public StateManager(MontoyaApi api, AiService aiService, RequestExecutor requestExecutor) {
     this.api = api;
@@ -31,10 +26,8 @@ public class StateManager {
     this.state = new ExecutionState();
   }
 
-  public void setUiComponents(TasksPanel tasksPanel, StepsPanel stepsPanel, ExecutionPanel executionPanel) {
-    this.tasksPanel = tasksPanel;
-    this.stepsPanel = stepsPanel;
-    this.executionPanel = executionPanel;
+  public void setView(StateManagerView view) {
+    this.view = view;
   }
 
   public void initializeNewEndpoint(HttpRequestResponse requestResponse) {
@@ -43,25 +36,25 @@ public class StateManager {
     state.setCurrentStep(null);
     state.setCurrentState(ExecutionState.State.GENERATING_TASKS);
 
-    executionPanel.clear();
-    stepsPanel.clearSteps();
-    stepsPanel.setNextButtonEnabled(false);
+    view.clearExecution();
+    view.clearSteps();
+    view.setNextButtonEnabled(false);
 
-    executionPanel.setThoughtProcess("Analyzing endpoint and generating tasks...");
+    view.setThoughtProcess("Analyzing endpoint and generating tasks...");
 
     CompletableFuture.runAsync(() -> {
       try {
         List<Task> tasks = aiService.generateTasks(requestResponse);
 
         SwingUtilities.invokeLater(() -> {
-          tasksPanel.setTasks(tasks);
-          executionPanel.setThoughtProcess("Tasks generated successfully. Select a task to begin.");
+          view.setTasks(tasks);
+          view.setThoughtProcess("Tasks generated successfully. Select a task to begin.");
           state.setCurrentState(ExecutionState.State.IDLE);
         });
       } catch (Exception e) {
         api.logging().logToError("Error generating tasks: " + e.getMessage());
         SwingUtilities.invokeLater(() -> {
-          executionPanel.setThoughtProcess("Error generating tasks: " + e.getMessage());
+          view.setThoughtProcess("Error generating tasks: " + e.getMessage());
           state.setCurrentState(ExecutionState.State.IDLE);
         });
       }
@@ -71,28 +64,28 @@ public class StateManager {
   public void selectTask(Task task) {
     state.setCurrentTask(task);
     state.setCurrentStep(null);
-    executionPanel.clear();
+    view.clearExecution();
 
     List<Step> existingSteps = task.getSteps();
-    stepsPanel.setSteps(existingSteps);
+    view.setSteps(existingSteps);
 
     if (existingSteps != null && !existingSteps.isEmpty()) {
       Step lastStep = existingSteps.get(existingSteps.size() - 1);
       state.setCurrentStep(lastStep);
-      stepsPanel.selectStep(lastStep);
+      view.selectStep(lastStep);
       displayStepDetails(lastStep);
-      executionPanel.setThoughtProcess("Resumed task: " + task.getName() + ". Showing last step.");
+      view.setThoughtProcess("Resumed task: " + task.getName() + ". Showing last step.");
     } else {
-      executionPanel.setThoughtProcess("Task selected: " + task.getName() + ". Click 'Next' to begin.");
+      view.setThoughtProcess("Task selected: " + task.getName() + ". Click 'Next' to begin.");
     }
 
-    stepsPanel.setNextButtonEnabled(true);
+    view.setNextButtonEnabled(true);
   }
 
   public void displayStepDetails(Step step) {
     if (step == null) {
       state.setCurrentStep(null);
-      executionPanel.clear();
+      view.clearExecution();
       return;
     }
 
@@ -101,9 +94,9 @@ public class StateManager {
     String thought = step.getThoughtProcess() != null ? step.getThoughtProcess() : "";
     String summary = step.getSummary() != null ? step.getSummary() : "No summary available.";
 
-    executionPanel.setThoughtProcess(thought + "\n\n--- Summary ---\n" + summary);
-    executionPanel.setRequest(step.getRequest());
-    executionPanel.setResponse(step.getResponse());
+    view.setThoughtProcess(thought + "\n\n--- Summary ---\n" + summary);
+    view.setRequest(step.getRequest());
+    view.setResponse(step.getResponse());
   }
 
   public void executeNextStep() {
@@ -112,9 +105,9 @@ public class StateManager {
     }
 
     state.setCurrentState(ExecutionState.State.EXECUTING_STEP);
-    stepsPanel.setNextButtonEnabled(false);
+    view.setNextButtonEnabled(false);
 
-    executionPanel.setThoughtProcess("AI is analyzing and creating next step...");
+    view.setThoughtProcess("AI is analyzing and creating next step...");
 
     CompletableFuture.runAsync(() -> {
       try {
@@ -129,7 +122,7 @@ public class StateManager {
 
         SwingUtilities.invokeLater(() -> {
           state.getCurrentTask().addStep(newStep);
-          stepsPanel.addStep(newStep);
+          view.addStep(newStep);
         });
 
         HttpService httpService = state.getBaseRequestResponse().httpService();
@@ -142,27 +135,27 @@ public class StateManager {
           newStep.setSummary(errorSummary);
 
           SwingUtilities.invokeLater(() -> {
-            executionPanel.setThoughtProcess(newStep.getThoughtProcess() +
+            view.setThoughtProcess(newStep.getThoughtProcess() +
                 "\n\nSummary: " + errorSummary);
-            executionPanel.setRequest(null);
-            executionPanel.setResponse(null);
-            stepsPanel.setNextButtonEnabled(true);
+            view.setRequest(null);
+            view.setResponse(null);
+            view.setNextButtonEnabled(true);
             state.setCurrentState(ExecutionState.State.IDLE);
           });
           return;
         }
 
         SwingUtilities.invokeLater(() -> {
-          executionPanel.setThoughtProcess(newStep.getThoughtProcess());
-          executionPanel.setRequest(newStep.getRequest());
-          executionPanel.setResponse(null);
+          view.setThoughtProcess(newStep.getThoughtProcess());
+          view.setRequest(newStep.getRequest());
+          view.setResponse(null);
         });
 
         final HttpResponse httpResponse = requestExecutor.executeRequest(newStep.getRequest());
         newStep.setResponse(httpResponse);
 
         SwingUtilities.invokeLater(() -> {
-          executionPanel.setResponse(httpResponse);
+          view.setResponse(httpResponse);
         });
 
         String summary;
@@ -176,17 +169,17 @@ public class StateManager {
 
         SwingUtilities.invokeLater(() -> {
 
-          executionPanel.setThoughtProcess(newStep.getThoughtProcess() +
+          view.setThoughtProcess(newStep.getThoughtProcess() +
               "\n\nSummary: " + summary);
-          stepsPanel.setNextButtonEnabled(true);
+          view.setNextButtonEnabled(true);
           state.setCurrentState(ExecutionState.State.IDLE);
         });
 
       } catch (Exception e) {
         api.logging().logToError("Error executing step: " + e.getMessage());
         SwingUtilities.invokeLater(() -> {
-          executionPanel.setThoughtProcess("Error: " + e.getMessage());
-          stepsPanel.setNextButtonEnabled(true);
+          view.setThoughtProcess("Error: " + e.getMessage());
+          view.setNextButtonEnabled(true);
           state.setCurrentState(ExecutionState.State.IDLE);
         });
       }

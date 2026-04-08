@@ -2,16 +2,22 @@ package burp.ui;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.HttpRequestResponse;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 // REMOVED: import burp.api.montoya.ui.SuiteTab;
 import burp.service.AiService;
 import burp.service.SettingsService; // Import the SettingsService
 import burp.service.StateManager;
+import burp.service.StateManagerView;
 import burp.service.RequestExecutor;
+import burp.model.Step;
+import burp.model.Task;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
 
-public class AinalyzerTab extends JPanel {
+public class AinalyzerTab extends JPanel implements StateManagerView {
 
   private final MontoyaApi api;
   private final StateManager stateManager;
@@ -42,7 +48,7 @@ public class AinalyzerTab extends JPanel {
     stepsPanel = new StepsPanel(api, stateManager);
     executionPanel = new ExecutionPanel(api, stateManager);
 
-    stateManager.setUiComponents(tasksPanel, stepsPanel, executionPanel);
+    stateManager.setView(this);
 
     JPanel tasksTitledPanel = createPanelWithTitle("Tasks", tasksPanel);
     JPanel stepsTitledPanel = createPanelWithTitle("Steps", stepsPanel);
@@ -170,6 +176,56 @@ public class AinalyzerTab extends JPanel {
 
   public void addNewEndpoint(HttpRequestResponse requestResponse) {
     stateManager.initializeNewEndpoint(requestResponse);
+  }
+
+  @Override
+  public void setTasks(List<Task> tasks) {
+    tasksPanel.setTasks(tasks);
+  }
+
+  @Override
+  public void clearSteps() {
+    stepsPanel.clearSteps();
+  }
+
+  @Override
+  public void setSteps(List<Step> steps) {
+    stepsPanel.setSteps(steps);
+  }
+
+  @Override
+  public void addStep(Step step) {
+    stepsPanel.addStep(step);
+  }
+
+  @Override
+  public void selectStep(Step step) {
+    stepsPanel.selectStep(step);
+  }
+
+  @Override
+  public void setNextButtonEnabled(boolean enabled) {
+    stepsPanel.setNextButtonEnabled(enabled);
+  }
+
+  @Override
+  public void setThoughtProcess(String thought) {
+    executionPanel.setThoughtProcess(thought);
+  }
+
+  @Override
+  public void setRequest(HttpRequest request) {
+    executionPanel.setRequest(request);
+  }
+
+  @Override
+  public void setResponse(HttpResponse response) {
+    executionPanel.setResponse(response);
+  }
+
+  @Override
+  public void clearExecution() {
+    executionPanel.clear();
   }
 
 }
