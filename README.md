@@ -4,6 +4,10 @@ An open-source Burp Suite extension that uses an AI assistant to propose and exe
 
 ![AInalyzer interface](images/image_ainalyzer.png)
 
+## Overview
+
+AInalyzer augments penetration testing workflows by using an AI assistant to generate and execute iterative security tests while keeping the analyst in control of each step.
+
 ## Features
 
 - Generate 3 to 5 follow-up security tasks from a captured HTTP request/response pair
@@ -74,6 +78,13 @@ By default AgentAPI listens on `http://localhost:3284`. AInalyzer uses:
 - `GET /status`
 - `POST /message`
 - `GET /messages`
+
+## How It Works
+
+1. Right-click an HTTP request in Burp Suite and select `Send to AInalyzer`.
+2. AInalyzer analyzes the request/response pair and generates 3 to 5 tasks.
+3. Select a task and click `Next` to execute the next AI-proposed step.
+4. Review the generated request, response, summary, and conversation history before continuing.
 
 ## Usage
 
