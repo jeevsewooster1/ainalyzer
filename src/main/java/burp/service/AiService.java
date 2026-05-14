@@ -166,6 +166,9 @@ public class AiService {
   }
 
   private String callAi(List<JsonObject> messages, JsonObject schema) throws Exception {
+    if (settingsService.getProviderType() == SettingsService.ProviderType.AGENTAPI) {
+      return callAgentApi(messages, schema);
+    }
 
     String currentApiEndpoint = settingsService.getApiEndpoint();
     String currentModel = settingsService.getModelName();
@@ -233,12 +236,286 @@ public class AiService {
     throw new RuntimeException("Failed to parse AI response: " + response);
   }
 
+  private String callAgentApi(List<JsonObject> messages, JsonObject schema) throws Exception {
+    String endpoint = normalizeAgentApiEndpoint(settingsService.getApiEndpoint());
+    int baselineMessageId = latestAgentApiMessageId(endpoint);
+
+    postAgentApiMessage(endpoint, buildAgentApiPrompt(messages, schema));
+    waitForAgentApiStable(endpoint);
+
+    String response = latestAgentApiAgentMessageAfter(endpoint, baselineMessageId);
+    String json = extractJsonPayload(response);
+    if (json == null || json.isBlank()) {
+      api.logging().logToError("AgentAPI response did not contain JSON: " + response);
+      throw new RuntimeException("AgentAPI response did not contain JSON.");
+    }
+    return json;
+  }
+
+  private String normalizeAgentApiEndpoint(String endpoint) {
+    if (endpoint == null || endpoint.isBlank()) {
+      throw new IllegalArgumentException("AgentAPI endpoint is not set.");
+    }
+
+    String normalized = endpoint.trim();
+    while (normalized.endsWith("/")) {
+      normalized = normalized.substring(0, normalized.length() - 1);
+    }
+    return normalized;
+  }
+
+  private int latestAgentApiMessageId(String endpoint) throws Exception {
+    JsonObject messagesResponse = getJson(endpoint + "/messages");
+    JsonArray messages = messagesResponse.getAsJsonArray("messages");
+    int latestId = 0;
+    if (messages == null) {
+      return latestId;
+    }
+
+    for (JsonElement element : messages) {
+      JsonObject message = element.getAsJsonObject();
+      if (message.has("id")) {
+        latestId = Math.max(latestId, message.get("id").getAsInt());
+      }
+    }
+    return latestId;
+  }
+
+  private void postAgentApiMessage(String endpoint, String content) throws Exception {
+    JsonObject payload = new JsonObject();
+    payload.addProperty("content", content);
+    payload.addProperty("type", "user");
+
+    JsonObject response = postJson(endpoint + "/message", payload);
+    if (!response.has("ok") || !response.get("ok").getAsBoolean()) {
+      throw new RuntimeException("AgentAPI did not accept the message.");
+    }
+  }
+
+  private void waitForAgentApiStable(String endpoint) throws Exception {
+    long deadline = System.currentTimeMillis() + 6_000_000L;
+    while (System.currentTimeMillis() < deadline) {
+      JsonObject statusResponse = getJson(endpoint + "/status");
+      String status = statusResponse.has("status") ? statusResponse.get("status").getAsString() : "";
+      if ("stable".equalsIgnoreCase(status)) {
+        return;
+      }
+      Thread.sleep(1000);
+    }
+
+    throw new RuntimeException("AgentAPI did not become stable before timeout.");
+  }
+
+  private String latestAgentApiAgentMessageAfter(String endpoint, int baselineMessageId) throws Exception {
+    JsonObject messagesResponse = getJson(endpoint + "/messages");
+    JsonArray messages = messagesResponse.getAsJsonArray("messages");
+    if (messages == null) {
+      throw new RuntimeException("AgentAPI /messages response did not include messages.");
+    }
+
+    JsonObject latestAgentMessage = null;
+    for (JsonElement element : messages) {
+      JsonObject message = element.getAsJsonObject();
+      int id = message.has("id") ? message.get("id").getAsInt() : 0;
+      String role = message.has("role") ? message.get("role").getAsString() : "";
+      if (id > baselineMessageId && "agent".equalsIgnoreCase(role)) {
+        latestAgentMessage = message;
+      }
+    }
+
+    if (latestAgentMessage == null) {
+      throw new RuntimeException("AgentAPI did not produce an agent response.");
+    }
+
+    if (latestAgentMessage.has("content")) {
+      return latestAgentMessage.get("content").getAsString();
+    }
+    if (latestAgentMessage.has("message")) {
+      return latestAgentMessage.get("message").getAsString();
+    }
+    throw new RuntimeException("AgentAPI agent message did not contain content.");
+  }
+
+  private JsonObject getJson(String url) throws Exception {
+    HttpURLConnection conn = openJsonConnection(url, "GET");
+    return readJsonResponse(conn);
+  }
+
+  private JsonObject postJson(String url, JsonObject payload) throws Exception {
+    HttpURLConnection conn = openJsonConnection(url, "POST");
+    conn.setDoOutput(true);
+    try (OutputStream os = conn.getOutputStream()) {
+      byte[] input = gson.toJson(payload).getBytes(StandardCharsets.UTF_8);
+      os.write(input, 0, input.length);
+    }
+    return readJsonResponse(conn);
+  }
+
+  private HttpURLConnection openJsonConnection(String url, String method) throws Exception {
+    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+    conn.setRequestMethod(method);
+    conn.setRequestProperty("Content-Type", "application/json");
+    applyExtraHeaders(conn);
+    conn.setConnectTimeout(10000);
+    conn.setReadTimeout(6000000);
+    return conn;
+  }
+
+  private JsonObject readJsonResponse(HttpURLConnection conn) throws Exception {
+    StringBuilder response = new StringBuilder();
+    try (BufferedReader br = new BufferedReader(
+        new InputStreamReader(
+            conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream(),
+            StandardCharsets.UTF_8))) {
+      String line;
+      while ((line = br.readLine()) != null) {
+        response.append(line.trim());
+      }
+    }
+
+    if (conn.getResponseCode() >= 400) {
+      throw new RuntimeException("AgentAPI error: " + response);
+    }
+
+    return gson.fromJson(response.toString(), JsonObject.class);
+  }
+
+  private String buildAgentApiPrompt(List<JsonObject> messages, JsonObject schema) {
+    StringBuilder prompt = new StringBuilder();
+    prompt.append("""
+        You are responding to a Burp Suite security testing extension.
+        Follow the conversation messages below.
+        Return only JSON matching the schema. Do not wrap it in markdown. Do not include commentary outside JSON.
+
+        JSON schema:
+        """);
+    prompt.append(gson.toJson(schema.getAsJsonObject("schema")));
+    prompt.append("\n\nConversation:\n");
+
+    for (JsonObject message : messages) {
+      String role = message.has("role") ? message.get("role").getAsString() : "user";
+      String content = message.has("content") ? message.get("content").getAsString() : "";
+      prompt.append("\n--- ").append(role.toUpperCase()).append(" ---\n");
+      prompt.append(content).append("\n");
+    }
+
+    prompt.append("\nReturn the JSON payload now.");
+    return prompt.toString();
+  }
+
+  String extractJsonPayload(String text) {
+    if (text == null) {
+      return null;
+    }
+
+    String trimmed = text.trim();
+    if (isJson(trimmed)) {
+      return trimmed;
+    }
+
+    String fenced = extractFencedJson(trimmed);
+    if (fenced != null && isJson(fenced)) {
+      return fenced;
+    }
+
+    String object = extractBalancedJson(trimmed, '{', '}');
+    if (object != null && isJson(object)) {
+      return object;
+    }
+
+    String array = extractBalancedJson(trimmed, '[', ']');
+    if (array != null && isJson(array)) {
+      return array;
+    }
+
+    return null;
+  }
+
+  private boolean isJson(String value) {
+    try {
+      gson.fromJson(value, JsonElement.class);
+      return true;
+    } catch (JsonSyntaxException e) {
+      return false;
+    }
+  }
+
+  private String extractFencedJson(String value) {
+    int fenceStart = value.indexOf("```");
+    if (fenceStart < 0) {
+      return null;
+    }
+
+    int contentStart = value.indexOf('\n', fenceStart);
+    if (contentStart < 0) {
+      return null;
+    }
+
+    int fenceEnd = value.indexOf("```", contentStart + 1);
+    if (fenceEnd < 0) {
+      return null;
+    }
+
+    String fenced = value.substring(contentStart + 1, fenceEnd).trim();
+    if (fenced.startsWith("json")) {
+      fenced = fenced.substring(4).trim();
+    }
+    return fenced;
+  }
+
+  private String extractBalancedJson(String value, char open, char close) {
+    int start = value.indexOf(open);
+    if (start < 0) {
+      return null;
+    }
+
+    boolean inString = false;
+    boolean escaped = false;
+    int depth = 0;
+    for (int i = start; i < value.length(); i++) {
+      char c = value.charAt(i);
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c == '\\' && inString) {
+        escaped = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (c == open) {
+        depth++;
+      } else if (c == close) {
+        depth--;
+        if (depth == 0) {
+          return value.substring(start, i + 1);
+        }
+      }
+    }
+
+    return null;
+  }
+
   private void applyConfiguredHeaders(HttpURLConnection conn) {
     String apiKey = settingsService.getApiKey();
     if (apiKey != null && !apiKey.isBlank()) {
       conn.setRequestProperty("Authorization", "Bearer " + apiKey);
     }
 
+    Map<String, String> extraHeaders = settingsService.parseExtraHeaders(settingsService.getExtraHeaders());
+    for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
+      conn.setRequestProperty(entry.getKey(), entry.getValue());
+    }
+  }
+
+  private void applyExtraHeaders(HttpURLConnection conn) {
     Map<String, String> extraHeaders = settingsService.parseExtraHeaders(settingsService.getExtraHeaders());
     for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
       conn.setRequestProperty(entry.getKey(), entry.getValue());

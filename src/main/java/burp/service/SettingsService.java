@@ -13,6 +13,7 @@ public class SettingsService {
 
   public enum ProviderType {
     LOCAL_OPENAI_COMPATIBLE("Local / OpenAI-compatible"),
+    AGENTAPI("AgentAPI"),
     OPENAI("OpenAI");
 
     private final String displayName;
@@ -38,8 +39,10 @@ public class SettingsService {
   private static final String EXTRA_HEADERS_KEY = "ainalyzer.extra.headers";
 
   private static final String DEFAULT_LOCAL_API_ENDPOINT = "http://localhost:11434/v1/chat/completions";
+  private static final String DEFAULT_AGENTAPI_ENDPOINT = "http://localhost:3284";
   private static final String DEFAULT_OPENAI_API_ENDPOINT = "https://api.openai.com/v1/chat/completions";
   private static final String DEFAULT_LOCAL_MODEL_NAME = "llama3.1";
+  private static final String DEFAULT_AGENTAPI_MODEL_NAME = "agentapi";
   private static final String DEFAULT_OPENAI_MODEL_NAME = "gpt-5.2";
 
   private final MontoyaApi api;
@@ -137,7 +140,7 @@ public class SettingsService {
       throw new IllegalArgumentException("API endpoint is not a valid URL.");
     }
 
-    if (modelName == null || modelName.isBlank()) {
+    if (providerType != ProviderType.AGENTAPI && (modelName == null || modelName.isBlank())) {
       throw new IllegalArgumentException("Model name is required.");
     }
 
@@ -149,11 +152,19 @@ public class SettingsService {
   }
 
   public String defaultApiEndpoint(ProviderType providerType) {
-    return providerType == ProviderType.OPENAI ? DEFAULT_OPENAI_API_ENDPOINT : DEFAULT_LOCAL_API_ENDPOINT;
+    return switch (providerType) {
+      case OPENAI -> DEFAULT_OPENAI_API_ENDPOINT;
+      case AGENTAPI -> DEFAULT_AGENTAPI_ENDPOINT;
+      case LOCAL_OPENAI_COMPATIBLE -> DEFAULT_LOCAL_API_ENDPOINT;
+    };
   }
 
   public String defaultModelName(ProviderType providerType) {
-    return providerType == ProviderType.OPENAI ? DEFAULT_OPENAI_MODEL_NAME : DEFAULT_LOCAL_MODEL_NAME;
+    return switch (providerType) {
+      case OPENAI -> DEFAULT_OPENAI_MODEL_NAME;
+      case AGENTAPI -> DEFAULT_AGENTAPI_MODEL_NAME;
+      case LOCAL_OPENAI_COMPATIBLE -> DEFAULT_LOCAL_MODEL_NAME;
+    };
   }
 
   public List<String> suggestedModels(ProviderType providerType) {
@@ -163,6 +174,10 @@ public class SettingsService {
           "gpt-5.2-chat-latest",
           "gpt-5-mini",
           "gpt-4.1");
+    }
+
+    if (providerType == ProviderType.AGENTAPI) {
+      return List.of(DEFAULT_AGENTAPI_MODEL_NAME);
     }
 
     return Arrays.asList(

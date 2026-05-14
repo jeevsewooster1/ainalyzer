@@ -10,13 +10,15 @@ An open-source Burp Suite extension that uses an AI assistant to propose and exe
 - Execute one AI-proposed test step at a time with analyst review between steps
 - Show task history, generated requests, server responses, and AI summaries in one tab
 - Keep prior step context for the selected task so the model can refine the next request
+- Keep multiple request threads and a per-thread analyst/AI conversation history
 - Work with OpenAI-compatible chat completion APIs
+- Work with coding agents through AgentAPI
 
 ## Requirements
 
 - Burp Suite Professional
 - JDK 21 or newer
-- An OpenAI-compatible API endpoint and model
+- An OpenAI-compatible API endpoint, OpenAI API key, or running AgentAPI server
 
 ## Build
 
@@ -47,6 +49,9 @@ Provider presets:
 - `Local / OpenAI-compatible`
   - for Ollama, LM Studio, and similar local servers
   - default endpoint: `http://localhost:11434/v1/chat/completions`
+- `AgentAPI`
+  - for an external AgentAPI server controlling Codex, Claude Code, Gemini, Aider, Goose, or another supported agent
+  - default endpoint: `http://localhost:3284`
 - `OpenAI`
   - default endpoint: `https://api.openai.com/v1/chat/completions`
   - requires bearer-token auth
@@ -54,7 +59,21 @@ Provider presets:
 Example models:
 
 - Ollama: `llama3.1`, `qwen2.5`
-- OpenAI: `gpt-4.1-mini`, `gpt-4.1`, `o4-mini`
+- OpenAI: `gpt-5.2`, `gpt-5-mini`, `gpt-4.1`
+
+## AgentAPI
+
+AgentAPI must be installed and started separately before selecting the `AgentAPI` provider.
+
+```bash
+agentapi server --type=codex -- codex
+```
+
+By default AgentAPI listens on `http://localhost:3284`. AInalyzer uses:
+
+- `GET /status`
+- `POST /message`
+- `GET /messages`
 
 ## Usage
 

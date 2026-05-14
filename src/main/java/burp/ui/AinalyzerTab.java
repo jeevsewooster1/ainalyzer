@@ -37,7 +37,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   private JPasswordField apiKeyField;
   private JTextArea extraHeadersArea;
   private JComboBox<SettingsService.ProviderType> providerTypeComboBox;
-  private JLabel providerHelpLabel;
+  private JTextArea providerHelpLabel;
 
   public AinalyzerTab(MontoyaApi api, SettingsService settingsService, AiService aiService) {
     this.api = api;
@@ -57,17 +57,17 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
 
     stateManager.setView(this);
 
-    JPanel configTitledPanel = createPanelWithTitle("Configuration", createConfigPanel());
+    JPanel configTitledPanel = createPanelWithTitle("Configuration", new JScrollPane(createConfigPanel()));
     JPanel requestsTitledPanel = createPanelWithTitle("Requests", requestThreadsPanel);
     JPanel tasksTitledPanel = createPanelWithTitle("Tasks", tasksPanel);
     JPanel stepsTitledPanel = createPanelWithTitle("Steps", stepsPanel);
 
-    configTitledPanel.setMinimumSize(new Dimension(260, 170));
-    requestsTitledPanel.setMinimumSize(new Dimension(260, 180));
-    tasksTitledPanel.setMinimumSize(new Dimension(260, 180));
-    configTitledPanel.setPreferredSize(new Dimension(320, 200));
-    requestsTitledPanel.setPreferredSize(new Dimension(320, 220));
-    tasksTitledPanel.setPreferredSize(new Dimension(320, 260));
+    configTitledPanel.setMinimumSize(new Dimension(130, 170));
+    requestsTitledPanel.setMinimumSize(new Dimension(130, 180));
+    tasksTitledPanel.setMinimumSize(new Dimension(130, 180));
+    configTitledPanel.setPreferredSize(new Dimension(160, 200));
+    requestsTitledPanel.setPreferredSize(new Dimension(160, 220));
+    tasksTitledPanel.setPreferredSize(new Dimension(160, 260));
 
     JSplitPane leftBottomSplitPane = new JSplitPane(
         JSplitPane.VERTICAL_SPLIT,
@@ -100,7 +100,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
         JSplitPane.HORIZONTAL_SPLIT,
         leftSplitPane,
         bottomRightSplitPane);
-    mainSplitPane.setResizeWeight(0.22);
+    mainSplitPane.setResizeWeight(0.12);
     mainSplitPane.setDividerSize(8);
     mainSplitPane.setOneTouchExpandable(true);
     mainSplitPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -109,7 +109,7 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     add(mainSplitPane, BorderLayout.CENTER);
 
     SwingUtilities.invokeLater(() -> {
-      mainSplitPane.setDividerLocation(300);
+      mainSplitPane.setDividerLocation(150);
       leftSplitPane.setDividerLocation(185);
       leftBottomSplitPane.setDividerLocation(230);
       bottomRightSplitPane.setDividerLocation(250);
@@ -117,15 +117,12 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   }
 
   private JComponent createConfigPanel() {
-    JPanel configPanel = new JPanel(new GridBagLayout());
-
-    GridBagConstraints gbc = new GridBagConstraints();
-    gbc.insets = new Insets(4, 4, 4, 4);
-    gbc.anchor = GridBagConstraints.WEST;
-    gbc.fill = GridBagConstraints.HORIZONTAL;
+    JPanel configPanel = new JPanel();
+    configPanel.setLayout(new BoxLayout(configPanel, BoxLayout.Y_AXIS));
+    configPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
     JLabel apiLabel = new JLabel("API Endpoint:");
-    apiEndpointField = new JTextField(settingsService.getApiEndpoint(), 30);
+    apiEndpointField = new JTextField(settingsService.getApiEndpoint(), 14);
 
     JLabel modelLabel = new JLabel("Model:");
     modelField = new JComboBox<>();
@@ -136,14 +133,23 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     providerTypeComboBox.setSelectedItem(settingsService.getProviderType());
 
     JLabel apiKeyLabel = new JLabel("API Key:");
-    apiKeyField = new JPasswordField(settingsService.getApiKey(), 20);
+    apiKeyField = new JPasswordField(settingsService.getApiKey(), 14);
 
     JLabel extraHeadersLabel = new JLabel("Extra Headers:");
-    extraHeadersArea = new JTextArea(settingsService.getExtraHeaders(), 3, 30);
+    extraHeadersArea = new JTextArea(settingsService.getExtraHeaders(), 4, 14);
     extraHeadersArea.setLineWrap(true);
     extraHeadersArea.setWrapStyleWord(true);
 
-    providerHelpLabel = new JLabel();
+    providerHelpLabel = new JTextArea();
+    providerHelpLabel.setColumns(14);
+    providerHelpLabel.setRows(3);
+    providerHelpLabel.setLineWrap(true);
+    providerHelpLabel.setWrapStyleWord(true);
+    providerHelpLabel.setEditable(false);
+    providerHelpLabel.setOpaque(false);
+    providerHelpLabel.setFocusable(false);
+    providerHelpLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
+    providerHelpLabel.setFont(providerHelpLabel.getFont().deriveFont(11f));
     updateProviderFields((SettingsService.ProviderType) providerTypeComboBox.getSelectedItem(), false);
 
     providerTypeComboBox.addActionListener(e -> updateProviderFields(
@@ -177,64 +183,25 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
       JOptionPane.showMessageDialog(this, message);
     });
 
-    gbc.gridx = 0;
-    gbc.gridy = 0;
-    gbc.weightx = 0;
-    configPanel.add(providerLabel, gbc);
+    configPanel.add(createFormGroup(providerLabel, providerTypeComboBox));
+    configPanel.add(providerHelpLabel);
+    configPanel.add(Box.createVerticalStrut(8));
+    configPanel.add(createFormGroup(apiLabel, apiEndpointField));
+    configPanel.add(Box.createVerticalStrut(6));
+    configPanel.add(createFormGroup(modelLabel, modelField));
+    configPanel.add(Box.createVerticalStrut(6));
+    configPanel.add(createFormGroup(apiKeyLabel, apiKeyField));
+    configPanel.add(Box.createVerticalStrut(6));
+    JScrollPane extraHeadersScrollPane = new JScrollPane(extraHeadersArea);
+    extraHeadersScrollPane.setPreferredSize(new Dimension(120, 90));
+    configPanel.add(createFormGroup(extraHeadersLabel, extraHeadersScrollPane));
+    configPanel.add(Box.createVerticalStrut(8));
 
-    gbc.gridx = 1;
-    gbc.weightx = 1;
-    configPanel.add(providerTypeComboBox, gbc);
-
-    gbc.gridx = 1;
-    gbc.gridy = 1;
-    gbc.weightx = 1;
-    configPanel.add(providerHelpLabel, gbc);
-
-    gbc.gridx = 0;
-    gbc.gridy = 2;
-    gbc.weightx = 0;
-    configPanel.add(apiLabel, gbc);
-
-    gbc.gridx = 1;
-    gbc.weightx = 1;
-    configPanel.add(apiEndpointField, gbc);
-
-    gbc.gridx = 0;
-    gbc.gridy = 3;
-    gbc.weightx = 0;
-    configPanel.add(modelLabel, gbc);
-
-    gbc.gridx = 1;
-    gbc.weightx = 1;
-    configPanel.add(modelField, gbc);
-
-    gbc.gridx = 0;
-    gbc.gridy = 4;
-    gbc.weightx = 0;
-    configPanel.add(apiKeyLabel, gbc);
-
-    gbc.gridx = 1;
-    gbc.weightx = 1;
-    configPanel.add(apiKeyField, gbc);
-
-    gbc.gridx = 0;
-    gbc.gridy = 5;
-    gbc.weightx = 0;
-    gbc.anchor = GridBagConstraints.NORTHWEST;
-    configPanel.add(extraHeadersLabel, gbc);
-
-    gbc.gridx = 1;
-    gbc.weightx = 1;
-    gbc.fill = GridBagConstraints.BOTH;
-    configPanel.add(new JScrollPane(extraHeadersArea), gbc);
-
-    gbc.gridx = 1;
-    gbc.gridy = 6;
-    gbc.weightx = 0;
-    gbc.fill = GridBagConstraints.NONE;
-    gbc.anchor = GridBagConstraints.EAST;
-    configPanel.add(saveButton, gbc);
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+    buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    buttonPanel.add(saveButton);
+    configPanel.add(buttonPanel);
+    configPanel.add(Box.createVerticalGlue());
 
     return configPanel;
   }
@@ -247,7 +214,8 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     if (applyDefaults) {
       apiEndpointField.setText(settingsService.defaultApiEndpoint(providerType));
       populateModelSuggestions(providerType, settingsService.defaultModelName(providerType));
-      if (providerType == SettingsService.ProviderType.LOCAL_OPENAI_COMPATIBLE) {
+      if (providerType == SettingsService.ProviderType.LOCAL_OPENAI_COMPATIBLE
+          || providerType == SettingsService.ProviderType.AGENTAPI) {
         apiKeyField.setText("");
       }
     } else {
@@ -255,9 +223,15 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
     }
 
     boolean openAi = providerType == SettingsService.ProviderType.OPENAI;
+    boolean agentApi = providerType == SettingsService.ProviderType.AGENTAPI;
     providerHelpLabel.setText(openAi
         ? "OpenAI uses bearer-token auth. Suggested models include gpt-5.2, gpt-5.2-chat-latest, and gpt-5-mini."
-        : "Use this for Ollama, LM Studio, and other OpenAI-compatible local endpoints.");
+        : agentApi
+            ? "Use this with an external AgentAPI server, usually agentapi server --type=codex -- codex."
+            : "Use this for Ollama, LM Studio, and other OpenAI-compatible local endpoints.");
+    providerHelpLabel.setCaretPosition(0);
+    modelField.setEnabled(!agentApi);
+    apiKeyField.setEnabled(openAi);
   }
 
   private void populateModelSuggestions(SettingsService.ProviderType providerType, String selectedModel) {
@@ -277,8 +251,16 @@ public class AinalyzerTab extends JPanel implements StateManagerView {
   private JPanel createPanelWithTitle(String title, JComponent content) {
     JPanel panel = new JPanel(new BorderLayout());
     panel.setBorder(BorderFactory.createTitledBorder(title));
-    panel.add(new JScrollPane(content), BorderLayout.CENTER);
+    panel.add(content, BorderLayout.CENTER);
     return panel;
+  }
+
+  private JPanel createFormGroup(JLabel label, JComponent input) {
+    JPanel group = new JPanel(new BorderLayout(0, 4));
+    group.setAlignmentX(Component.LEFT_ALIGNMENT);
+    group.add(label, BorderLayout.NORTH);
+    group.add(input, BorderLayout.CENTER);
+    return group;
   }
 
   public void addNewEndpoint(HttpRequestResponse requestResponse) {

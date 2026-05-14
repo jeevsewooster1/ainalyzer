@@ -68,8 +68,8 @@ public class ExecutionPanel extends JPanel {
 
     JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
         conversationPanel, reqRespPanel);
-    splitPane.setDividerLocation(300);
-    splitPane.setResizeWeight(0.5);
+    splitPane.setDividerLocation(270);
+    splitPane.setResizeWeight(0.45);
 
     add(splitPane, BorderLayout.CENTER);
   }
