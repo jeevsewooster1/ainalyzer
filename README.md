@@ -69,6 +69,21 @@ Example models:
 
 AgentAPI must be installed and started separately before selecting the `AgentAPI` provider.
 
+Install or update the latest `agentapi` binary:
+
+```bash
+OS=$(uname -s | tr "[:upper:]" "[:lower:]")
+ARCH=$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/")
+curl -fsSL "https://github.com/coder/agentapi/releases/latest/download/agentapi-${OS}-${ARCH}" -o agentapi
+chmod +x agentapi
+```
+
+Verify the installation:
+
+```bash
+./agentapi --help
+```
+
 ```bash
 agentapi server --type=codex -- codex
 ```
